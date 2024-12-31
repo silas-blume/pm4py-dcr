@@ -5,10 +5,10 @@ from datetime import datetime
 
 class RelationType(Flag): ### ORDER REMAINING 5 EFFECTS ACCORDING TO ORDER OF APPLICATION ###
     S = 'spawn'
-    I = 'include'
     E = 'exclude'
-    R = 'response'
+    I = 'include'
     N = 'noResponse'
+    R = 'response'
     V = 'setValue'
     C = 'condition'
     M = 'milestone'
@@ -162,6 +162,21 @@ class DcrActivity(DcrElement):
     @data.setter
     def data(self, value: any):
         self.__data = value
+
+
+class DcrSubprocess(DcrActivity):
+    
+    def __init__(self, id, children=None, expression=None, takesInput=False, template=None, isTemplate=False):
+        super().__init__(id, expression, takesInput, template, isTemplate)
+        self.__children = set() if children is None else children
+
+    @property
+    def children(self) -> Set[DcrElement]:
+        return self.__children
+    
+    @children.setter
+    def children(self, value: Set[DcrElement]):
+        self.__children = value
     
 
 class DcrNesting(DcrElement):
@@ -179,19 +194,26 @@ class DcrNesting(DcrElement):
         self.__children = value
 
 
-class DcrSubProcess(DcrActivity, DcrNesting):
+class DcrSubgraph(DcrNesting):
     
-    def __init__(self, id, children=None, expression=None, takesInput=False, template=None, isTemplate=False):
-        super().__init__(id=id, children=children, expression=expression, takesInput=takesInput, template=template, isTemplate=isTemplate)
+    def __init__(self, id, children=None):
+        super().__init__(id, children, True)
+
+
+class DcrSpawnContainer(DcrNesting):
+    
+    def __init__(self, id, children=None):
+        super().__init__(id, children, False)
 
 
 class DcrRelation:
     
-    def __init__(self, type, source, target, guard=None):
+    def __init__(self, type, source, target, guard=None, forAll=False):
         self.__relationType = type
         self.__source = source
         self.__target = target
         self.__guard = guard
+        self.__forAll = forAll
 
     @property
     def relationType(self) -> RelationType:
@@ -224,6 +246,14 @@ class DcrRelation:
     @guard.setter
     def guard(self, value: DcrExpression):
         self.__guard = value
+
+    @property
+    def forAll(self) -> bool:
+        return self.__forAll
+    
+    @forAll.setter
+    def forAll(self, value: bool):
+        self.__forAll = value
     
     def __repr__(self):
         return "Relation type: " + str(self.relationType) + ", Source: " + str(self.source) + ", Target: " + str(self.target) + ", Guard: " + str(self.guard)
@@ -252,13 +282,12 @@ class DcrSpawn(DcrRelation):
 
 class DcrGraph:
     
-    def __init__(self, id, template=None, isTemplate=False):
+    def __init__(self, id, template=None):
         self.__id = id
         self.__events = set() if template is None else template.events
         self.__elements = set() if template is None else template.elements
         self.__activityMap = {} if template is None else template.labelMapping
         self.__relations = set() if template is None else template.relations
-        self.__template = isTemplate
 
     @property
     def ID(self) -> str:
@@ -300,13 +329,60 @@ class DcrGraph:
     def relations(self, value: Set[DcrRelation]):
         self.__relations = value
 
-    @property
-    def isTemplate(self) -> bool:
-        return self.__template
+    def getParents(self, element: DcrElement) -> Set[DcrNesting | DcrSubprocess]:
+        parents = set()
+        for e in self.elements:
+            if element in e.children:
+                parents.add(e)
+        return parents
     
-    @isTemplate.setter
-    def isTemplate(self, value: bool):
-        self.__template = value
+    def hasAsParent(self, child: DcrElement, element: DcrElement) -> bool:
+        parents = self.getParents(child)
+        if element in parents:
+            return True
+        else:
+            res = False
+            for parent in parents:
+                res = res or self.hasAsParent(parent, element)
+            return res
+    
+    def initiateSpawnContainers(self, element: DcrElement, subgraph: DcrSubgraph):
+        container = DcrSpawnContainer(element.ID + "Container", {element})
+        self.elements.add(container)
+        for r in self.relations:
+            if r.source == element and (not self.hasAsParent(r.target, subgraph) or r.target.):
+                r.source = container
+            if r.target == element and not self.hasAsParent(r.source, subgraph):
+                r.target = container
+    # What about internal relations? How to show if a relation is to internal element or of said element?
+    # What about graphs with initial instantiations? 
+                
+        if isinstance(element, DcrNesting | DcrSubprocess) and not isinstance(element, DcrSubgraph):
+            for child in element.children:
+                self.initiateSpawnContainers(child, subgraph)
+
+    ### Suppose an element has two parents, a subprocess and a nesting. However, the nesting also has the same subprocess as a parent
+    ### does this count as the element having two subprocess parents?
+    ### If not, make subprocess a set instead and check its length in initiateGraph
+    def getNumSubprocessParents(self, element: DcrElement):
+        subprocesses = 0
+        parents = self.getParents(element)
+        for parent in parents:
+            if isinstance(parent, DcrSubprocess):
+                subprocesses += 1
+            else:
+                subprocesses += self.getNumSubprocessParents(parent)
+        return subprocesses
+
+    def initiateGraph(self):
+        for element in self.elements:
+            if self.getNumSubprocessParents(element) > 1:
+                raise Exception("Element with ID {} is part of more than one subprocess".format(element.ID))
+
+            if isinstance(element, DcrSubgraph):
+                for child in element.children:
+                    self.initiateSpawnContainers(child, element)
+            
 
     def getEventID(self, activity: DcrActivity) -> str:
         for eventID, dcrActivity in self.activity_map.items():
