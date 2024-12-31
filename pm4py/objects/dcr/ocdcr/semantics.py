@@ -1,71 +1,53 @@
 from typing import Set
 from datetime import datetime
 
-from pm4py.objects.dcr.ocdcr.obj import DcrGraph, DcrElement, DcrNesting, DcrSubProcess, DcrActivity, DcrRelation, DcrSpawn, RelationType, DcrExpression, DcrEvent
+from pm4py.objects.dcr.ocdcr.obj import DcrGraph, DcrElement, DcrNesting, DcrSubprocess, DcrActivity, DcrRelation, DcrSpawn, RelationType, DcrExpression, DcrEvent
 
 
 class DcrSemantics:
 
     @classmethod
-    def getEffects(cls, element: DcrElement, graph: DcrGraph) -> Set[DcrRelation]:
-        res = set()
-        for r in graph.relations:
-            if r.source == element and r.relationType in RelationType.EFFECTS:
-                res.add(r)
-        return sorted(res, key=lambda x: x.relationType)
-
-    @classmethod
-    def getConstraints(cls, element: DcrElement, graph: DcrGraph) -> Set[DcrRelation]:
-        res = set()
-        for rel in graph.relations:
-            if rel.target == element and rel.relationType in RelationType.CONSTRAINTS:
-                res.add(rel)
-        return res
-    
-    @classmethod
-    def isEnabled(cls, element: DcrActivity | DcrSubProcess, graph: DcrGraph) -> bool:
-        if not element.included:
-            return False
-        if isinstance(element, DcrSubProcess) and element.childrenPending:
-            return False
-        constraints = cls.getConstraints(element, graph)
-        for r in constraints:
-            if r.guard is None or cls.evaluateExpression(r.guard, graph, r.source, element):
-                if not cls.constraintPasses(r.source, r.relationType):
-                    return False
-        return True
-    
-    @classmethod
-    def constraintPasses(cls, element: DcrElement, relationType: RelationType) -> bool:
-        if type(element) is DcrNesting:
-            res = True
-            for child in element.children:
-                res = res and cls.constraintPasses(child, relationType)
-            return res
-        if relationType == RelationType.C and not element.executed:
-            return False
-        if relationType == RelationType.M and element.pending:
-            return False
-        return True
-
-    @classmethod
-    def getRelations(cls, element: DcrElement, graph: DcrGraph) -> Set[DcrRelation]:
+    def getRelations(cls, element: DcrElement, graph: DcrGraph, yields: str) -> Set[DcrRelation] | tuple[Set[DcrRelation], Set[DcrRelation]]:
         incoming = set()
         outgoing = set()
-        for rel in graph.relations:
-            if rel.target == element:
-                incoming.add(rel)
-            elif rel.source == element:
-                outgoing.add(rel)
-        return incoming, outgoing
-
+        for r in graph.relations:
+            if r.target == element and (yields != "constraints" or r.relationType in RelationType.CONSTRAINTS):
+                incoming.add(r)
+            elif r.source == element and (yields != "effects" or r.relationType in RelationType.EFFECTS):
+                outgoing.add(r)
+        parents = graph.getParents(element)
+        for parent in parents:
+            if isinstance(parent, DcrNesting):
+                i, o = cls.getRelations(parent, graph, yields)
+                incoming.update(i)
+                outgoing.update(o)
+        return incoming if yields == "constraints" else outgoing if yields == "effects" else incoming, outgoing
+    
     @classmethod
-    def getParents(cls, element: DcrElement, graph: DcrGraph) -> Set[DcrNesting | DcrSubProcess]:
-        parents = set()
-        for e in graph.elements:
-            if element in e.children:
-                parents.add(e)
-        return parents
+    def isEnabled(cls, element: DcrActivity | DcrSubprocess, graph: DcrGraph) -> bool:
+        if not element.included:
+            return False
+        if isinstance(element, DcrSubprocess) and element.childrenPending:
+            return False
+        constraints = cls.getRelations(element, graph, "constraints")
+        for r in constraints:
+            if not cls.constraintPasses(r.source, element, r.relationType, r.guard, graph):
+                return False
+        return True
+    
+    @classmethod
+    def constraintPasses(cls, source: DcrElement, target: DcrElement, relationType: RelationType, guard: DcrExpression, graph: DcrGraph) -> bool:
+        if type(source) is DcrNesting:
+            res = True
+            for child in source.children:
+                res = res and cls.constraintPasses(child, target, relationType, guard, graph)
+            return res
+        if guard is None or cls.evaluateExpression(guard, graph, source, target):
+            if relationType == RelationType.C and not source.executed:
+                return False
+            if relationType == RelationType.M and source.pending:
+                return False
+        return True
     
     @classmethod
     def parseAttribute(cls, element: DcrElement, attribute, graph: DcrGraph) -> any:
@@ -88,7 +70,7 @@ class DcrSemantics:
                     if isinstance(element, DcrActivity):
                         return element.data
                 case "children":
-                    if isinstance(element, DcrNesting):
+                    if isinstance(element, DcrNesting | DcrSubprocess):
                         return element.children
         return None
     
@@ -96,17 +78,17 @@ class DcrSemantics:
     def evaluateExpression(cls, expression: DcrExpression, graph: DcrGraph, source: DcrElement=None, target: DcrElement=None) -> any:
         match expression.reference:
             case None:
-                value = expression.attribute
+                value = expression.value
             case "source":
                 if source is not None:
-                    value = cls.parseAttribute(source, expression.attribute, graph)
+                    value = cls.parseAttribute(source, expression.value, graph)
             case "target":
                 if target is not None:
-                    value = cls.parseAttribute(target, expression.attribute, graph)
+                    value = cls.parseAttribute(target, expression.value, graph)
             case id:
-                value = cls.parseAttribute(graph.getActivityFromID(id), expression.attribute, graph)
+                value = cls.parseAttribute(graph.getActivityFromID(id), expression.value, graph)
 
-        if value is not None and expression.operator is not None:
+        if value is not None and expression.operator is not None and expression.additional is not None:
             match expression.operator:
                 case "+":
                     return value + cls.evaluateExpression(expression.additional, graph, source, target)
@@ -130,28 +112,28 @@ class DcrSemantics:
                     return value and cls.evaluateExpression(expression.additional, graph, source, target)
                 case "or":
                     return value or cls.evaluateExpression(expression.additional, graph, source, target)
-                case "count":
-                    return len(value)
+        elif value is not None and expression.operator == "count":
+            return len(value)
 
         return value
     
     @classmethod
     def updateIncluded(cls, value: bool, element: DcrElement, graph: DcrGraph):
         element.included = value
-        if isinstance(element, DcrNesting):
+        if isinstance(element, DcrNesting | DcrSubprocess):
           for child in element.children:
               if not value:
                   child.parentsIncluded = False
               else:
                   child.parentsIncluded = True
-                  parents = cls.getParents(child, graph)
+                  parents = graph.getParents(child)
                   for parent in parents:
                       child.parentsIncluded = child.parentsIncluded and parent.included
     
     @classmethod
     def updatePending(cls, value: bool, element: DcrElement, graph: DcrGraph):
         element.pending = value
-        parents = cls.getParents(element, graph)
+        parents = graph.getParents(element)
         for parent in parents:
             if value:
                 parent.childrenPending = True
@@ -166,7 +148,7 @@ class DcrSemantics:
         cls.execute(activity, graph, event.input)
     
     @classmethod
-    def execute(cls, element: DcrActivity | DcrSubProcess, graph: DcrGraph, input=None):
+    def execute(cls, element: DcrActivity | DcrSubprocess, graph: DcrGraph, input=None):
         if element.takesInput:
             element.data = input
         elif element.expression is not None:
@@ -174,13 +156,13 @@ class DcrSemantics:
         cls.updatePending(False, element, graph)
         element.executed = datetime.now()
 
-        effects = cls.getEffects(element, graph)
+        effects = cls.getRelations(element, graph, "effects")
         for r in effects:
             if r.guard is None or cls.evaluateExpression(r.guard, graph, element, r.target):
                 cls.relateToTarget(r.target, r, graph)
 
         for parent in element.parents:
-            if isinstance(parent, DcrSubProcess) and cls.isEnabled(parent, graph):
+            if isinstance(parent, DcrSubprocess) and cls.isEnabled(parent, graph):
                 cls.execute(parent, graph)
                 break
 
@@ -190,7 +172,7 @@ class DcrSemantics:
             relation.spawned += 1
             cls.spawn(element, graph, relation.spawned)
 
-        elif type(element) is DcrNesting:
+        elif isinstance(element, DcrNesting):
             for child in element.children:
                 cls.relateToTarget(child, relation, graph)
         
@@ -211,8 +193,8 @@ class DcrSemantics:
     def spawn(cls, element: DcrElement, graph: DcrGraph, spawnNumber: int):
         elementDict = cls.spawnElements(element, graph, spawnNumber)
 
-        for key in elementDict:
-            incoming, outgoing = cls.getRelations(key, graph)
+        for key in elementDict: ### DON'T COPY ORIGINAL SPAWN ###
+            incoming, outgoing = cls.getRelations(key, graph, "all")
             for i in incoming:
                 source = elementDict[i.source] if i.source in elementDict else i.source
                 if i.relationType == RelationType.S:
@@ -231,15 +213,15 @@ class DcrSemantics:
     def spawnElements(cls, element: DcrElement, graph: DcrGraph, spawnNumber: int):
         spawns = {}
 
-        if isinstance(element, DcrNesting):
+        if isinstance(element, DcrNesting | DcrSubprocess):
             children = set()
             for child in element.children:
                 spawns.update(cls.spawnElements(child, graph, spawnNumber))
                 children.add(spawns[child])
             if type(element) is DcrNesting:
                 spawns[element] = DcrNesting(element.ID + "S" + str(spawnNumber), children)
-            elif type(element) is DcrSubProcess:
-                spawns[element] = DcrSubProcess(element.ID + "S" + str(spawnNumber), set(children.values), template=element)
+            elif type(element) is DcrSubprocess:
+                spawns[element] = DcrSubprocess(element.ID + "S" + str(spawnNumber), set(children.values), template=element)
         else:
             spawns[element] = DcrActivity(element.ID + "S" + str(spawnNumber), template=element)
 
@@ -248,7 +230,7 @@ class DcrSemantics:
     @classmethod
     def makeTemplate(cls, element: DcrElement):
         element.isTemplate = True
-        if isinstance(element, DcrNesting):
+        if isinstance(element, DcrNesting | DcrSubprocess):
           for child in element.children:
               cls.makeTemplate(child)
 
