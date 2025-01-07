@@ -316,11 +316,11 @@ class DcrGraph:
         self.__id = value
 
     @property
-    def events(self) -> Set[str]:
+    def events(self) -> Set[DcrEvent]:
         return self.__events
 
     @events.setter
-    def events(self, value: Set[str]):
+    def events(self, value: Set[DcrEvent]):
         self.__events = value
 
     @property
@@ -328,15 +328,15 @@ class DcrGraph:
         return self.__elements
 
     @elements.setter
-    def labels(self, value: Set[DcrElement]):
+    def elements(self, value: Set[DcrElement]):
         self.__elements = value
 
     @property
-    def activity_map(self) -> Dict[str, DcrActivity]:
+    def activityMap(self) -> Dict[str, DcrActivity]:
         return self.__activityMap
 
-    @activity_map.setter
-    def activity_map(self, value: Dict[str, DcrActivity]):
+    @activityMap.setter
+    def activityMap(self, value: Dict[str, DcrActivity]):
         self.__activityMap = value
 
     @property
@@ -347,7 +347,7 @@ class DcrGraph:
     def relations(self, value: Set[DcrRelation]):
         self.__relations = value
 
-    def getParents(self, element: DcrElement) -> Set[DcrNesting | DcrSubprocess]:
+    def getParents(self, element: DcrElement) -> Set[DcrParentElement]:
         parents = set()
         for e in self.elements:
             if isinstance(e, DcrParentElement) and element in e.children:
@@ -397,7 +397,7 @@ class DcrGraph:
                 res = res or self.hasAsParent(parent, element)
             return res
     
-    def initiateSpawnContainer(self, element: DcrElement, subgraph: DcrSubgraph) -> Set[DcrSpawnContainer]:
+    def initiateSpawnContainers(self, element: DcrElement, subgraph: DcrSubgraph) -> Set[DcrSpawnContainer]:
         element.isTemplate = True
         containers = set()
         container = DcrSpawnContainer(element.ID + "Container", {element})
@@ -409,7 +409,7 @@ class DcrGraph:
                 r.target = container
         if isinstance(element, DcrNesting | DcrSubprocess):
             for child in element.children:
-                containers.update(self.initiateSpawnContainer(child, subgraph))
+                containers.update(self.initiateSpawnContainers(child, subgraph))
         return containers
 
     def getSubprocessParents(self, element: DcrElement) -> Set[DcrSubprocess]:
@@ -436,7 +436,7 @@ class DcrGraph:
                         raise Exception("Subgraph with ID {} is the source of one or more relations and should not be".format(element.ID))
                 containers = set()
                 for child in element.children:
-                    containers.update(self.initiateSpawnContainer(child, element))
+                    containers.update(self.initiateSpawnContainers(child, element))
                 element.children = containers
                 spawnContainers.update(containers)
             if isinstance(element, DcrActivity):
@@ -451,12 +451,12 @@ class DcrGraph:
             
 
     def getEventID(self, activity: DcrActivity) -> str:
-        for eventID, dcrActivity in self.activity_map.items():
+        for eventID, dcrActivity in self.activityMap.items():
             if activity == dcrActivity:
                 return eventID
 
     def getActivity(self, eventID: str) -> DcrActivity:
-        return self.activity_map[eventID]
+        return self.activityMap[eventID]
     
     def getElementFromID(self, ID: str) -> DcrElement:
         for e in self.elements:
