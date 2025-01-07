@@ -1,7 +1,8 @@
 from typing import Set
 from datetime import datetime
 from keyword import iskeyword
-import re   # May be used in the evaluation of computations
+import re
+import logging
 
 
 from obj import DcrGraph, DcrElement, DcrParentElement, DcrNesting, DcrSubprocess, DcrSubgraph, DcrSpawnContainer, DcrActivity, DcrRelation, DcrEffect, DcrSpawn, DcrConstraint, RelationType, DcrExpression, DcrComputation, DcrEvent
@@ -113,10 +114,13 @@ class DcrSemantics:
     @classmethod
     def evaluateComputation(cls, computation: DcrComputation, graph: DcrGraph, source: DcrElement=None, target: DcrElement=None) -> any:
     # Unaccessed parameters may be used for evaluation of final string.
+        logging.captureWarnings(True)
         for i, expression in enumerate(computation):
             computation[i] = cls.parseExpression(expression)
         executable = " ".join(computation)
-        return eval(executable)
+        res = eval(executable)
+        logging.captureWarnings(False)
+        return res
 
     @classmethod
     def executeEvent(cls, event: DcrEvent, graph: DcrGraph):
