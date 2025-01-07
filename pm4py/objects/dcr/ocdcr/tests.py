@@ -521,7 +521,34 @@ class TestOne2ManyAndMany2Many(unittest.TestCase):
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn2").pending)
 
     def test_subInner_m2m_subOuter(self):
-        pass
+        # Spawn 2 versions of act6 and subG2 and, for each of the latter, spawn 2 versions of act8 for a total of 4:
+        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
+        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
+        sem.executeEvent(obj.DcrEvent("e_act7Spawn1"), self.graph)
+        sem.executeEvent(obj.DcrEvent("e_act7Spawn1"), self.graph)
+        sem.executeEvent(obj.DcrEvent("e_act7Spawn2"), self.graph)
+        sem.executeEvent(obj.DcrEvent("e_act7Spawn2"), self.graph)
+        sem.executeEvent(obj.DcrEvent("e_act6Spawn1", True), self.graph)
+        sem.executeEvent(obj.DcrEvent("e_act6Spawn2", True), self.graph)
+        # Neither act6 is pending:
+        self.assertFalse(self.graph.getElementFromID("act6Spawn1").pending)
+        self.assertFalse(self.graph.getElementFromID("act6Spawn2").pending)
+        # Execute response effect from act8 in Spawn1 with data=False:
+        sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn1", False), self.graph)
+        # acts6 were not affected:
+        self.assertFalse(self.graph.getElementFromID("act6Spawn1").pending)
+        self.assertFalse(self.graph.getElementFromID("act6Spawn2").pending)
+        # Execute from other act8 in Spawn1 with data=True:
+        sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn2", True), self.graph)
+        # Both acts6 were affected across spawns:
+        self.assertTrue(self.graph.getElementFromID("act6Spawn1").pending)
+        self.assertTrue(self.graph.getElementFromID("act6Spawn2").pending)
+        # Resetting pending and executing with one target failing guard affects only the target with data=True:
+        sem.executeEvent(obj.DcrEvent("e_act6Spawn1", False), self.graph)
+        sem.executeEvent(obj.DcrEvent("e_act6Spawn2", True), self.graph)
+        sem.executeEvent(obj.DcrEvent("e_act8Spawn2Spawn1", True), self.graph)
+        self.assertFalse(self.graph.getElementFromID("act6Spawn1").pending)
+        self.assertTrue(self.graph.getElementFromID("act6Spawn2").pending)
 
 
 if __name__ == "__main__":
