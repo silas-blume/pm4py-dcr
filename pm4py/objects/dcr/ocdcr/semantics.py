@@ -114,7 +114,7 @@ class DcrSemantics:
     @classmethod
     def evaluateComputation(cls, computation: DcrComputation, graph: DcrGraph, source: DcrElement=None, target: DcrElement=None) -> any:
     # Unaccessed parameters may be used for evaluation of final string.
-        logging.captureWarnings(True)
+        logging.captureWarnings(True) # Removes warning for using "\d" in some expressions
         for i, expression in enumerate(computation):
             computation[i] = cls.parseExpression(expression)
         executable = " ".join(computation)
@@ -256,11 +256,11 @@ class DcrSemantics:
             elif type(element) is DcrSubprocess:
                 spawns[element] = DcrSubprocess("{}Spawn{}".format(element.ID, spawnNumber), template=element)
                 eventID = "e_{}Spawn{}".format(element.ID, spawnNumber)
-                graph.activity_map[eventID] = spawns[element]
+                graph.activityMap[eventID] = spawns[element]
             else:
                 spawns[element] = DcrActivity("{}Spawn{}".format(element.ID, spawnNumber), template=element)
                 eventID = "e_{}Spawn{}".format(element.ID, spawnNumber)
-                graph.activity_map[eventID] = spawns[element]
+                graph.activityMap[eventID] = spawns[element]
 
         return spawns
     
