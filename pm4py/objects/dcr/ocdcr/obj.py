@@ -1,19 +1,17 @@
-from enum import Flag
+from enum import IntEnum
 from typing import Set, Dict, Callable
 from datetime import datetime
 
 
-class RelationType(Flag): ### ORDER REMAINING 5 EFFECTS ACCORDING TO ORDER OF APPLICATION ###
-    S = 'spawn'
-    E = 'exclude'
-    I = 'include'
-    N = 'noResponse'
-    R = 'response'
-    V = 'setValue'
-    C = 'condition'
-    M = 'milestone'
-    EFFECTS = I | E | R | N | S | V
-    CONSTRAINTS = C | M
+class RelationType(IntEnum):
+    S = 1 # spawn
+    E = 2 # exclude
+    I = 3 # include
+    N = 4 # noResponse
+    R = 5 # response
+    V = 6 # setValue
+    C = 7 # condition
+    M = 8 # milestone
 
 class DcrEvent:
     
@@ -30,37 +28,15 @@ class DcrEvent:
         return self.__input
     
 
-class DcrExpression:
-    
-    def __init__(self, reference, value, operator=None, additional=None):
-        self.__reference = reference
-        self.__value = value
-        self.__operator = operator
-        self.__additional = additional
-
-    @property
-    def reference(self) -> str:
-        return self.__reference
-    
-    @property
-    def value(self) -> any:
-        return self.__value
-    
-    @property
-    def operator(self) -> str:
-        return self.__operator
-    
-    @property
-    def additional(self) -> 'DcrExpression':
-        return self.__additional
+type DcrExpression = str | int | float | tuple[str, str]
+type DcrComputation = list[DcrExpression]
 
 class DcrElement:
     
-    def __init__(self, id, template=None, isTemplate=False):
+    def __init__(self, id, template=None):
         self.__id = id
         self.__parentsIncluded = True if template is None else template.parentsIncluded
-        self.__childrenPending = False if template is None else template.childrenPending
-        self.__template = isTemplate
+        self.__isTemplate = False
 
     @property
     def ID(self) -> str:
@@ -79,28 +55,20 @@ class DcrElement:
         self.__parentsIncluded = value
 
     @property
-    def childrenPending(self) -> bool:
-        return self.__childrenPending
-    
-    @childrenPending.setter
-    def childrenPending(self, value: bool):
-        self.__childrenPending = value
+    def effectiveIncluded(self) -> bool:
+        return self.parentsIncluded and not self.isTemplate
 
     @property
-    def included(self) -> bool:
-        return self.parentsIncluded
-
-    @property
-    def pending(self) -> bool:
-        return self.childrenPending
+    def effectivePending(self) -> bool:
+        return False
 
     @property
     def isTemplate(self) -> bool:
-        return self.__template
+        return self.__isTemplate
     
     @isTemplate.setter
     def isTemplate(self, value: bool):
-        self.__template = value
+        self.__isTemplate = value
 
     def __hash__(self) -> int:
         return hash(self.ID)
@@ -114,30 +82,38 @@ class DcrElement:
 
 class DcrActivity(DcrElement):
     
-    def __init__(self, id, expression=None, takesInput=False, template=None, isTemplate=False):
-        super().__init__(id, template, isTemplate)
-        self.__included = True if template is None else template.included
-        self.__pending = False if template is None else template.pending
-        self.__executed = None if template is None else template.executed # set as None or a datetime denoting execution time. Not currently used but for compatability with timed graphs.
-        self.__expression = expression if template is None else template.expression
+    def __init__(self, id, included=True, pending=False, computation: DcrComputation=None, takesInput=False, template=None, **kwargs):
+        super().__init__(id, template=template, **kwargs)
+        self.__included = included if template is None else template.included
+        self.__pending = pending if template is None else template.pending
+        self.__executed = None # set as None or a datetime denoting execution time. Not currently used but for compatability with timed graphs.
+        self.__computation = computation if template is None else template.computation
         self.__takesInput = takesInput if template is None else template.takesInput
         self.__data = None
 
     @property
     def included(self) -> bool:
-        return self.__included and self.parentsIncluded
+        return self.__included
     
     @included.setter
     def included(self, value: bool):
         self.__included = value
 
     @property
+    def effectiveIncluded(self) -> bool:
+        return self.included and self.parentsIncluded and not self.isTemplate
+
+    @property
     def pending(self) -> bool:
-        return self.__pending or self.childrenPending
+        return self.__pending
     
     @pending.setter
     def pending(self, value: bool):
         self.__pending = value
+    
+    @property
+    def effectivePending(self) -> bool:
+        return self.pending and not self.isTemplate
 
     @property
     def executed(self) -> datetime:
@@ -148,8 +124,8 @@ class DcrActivity(DcrElement):
         self.__executed = value
 
     @property
-    def expression(self) -> DcrExpression:
-        return self.__expression
+    def computation(self) -> DcrComputation:
+        return self.__computation
     
     @property
     def takesInput(self) -> bool:
@@ -164,26 +140,12 @@ class DcrActivity(DcrElement):
         self.__data = value
 
 
-class DcrSubprocess(DcrActivity):
+class DcrParentElement(DcrElement):
     
-    def __init__(self, id, children=None, expression=None, takesInput=False, template=None, isTemplate=False):
-        super().__init__(id, expression, takesInput, template, isTemplate)
+    def __init__(self, id, children=None, template = None):
+        super().__init__(id, template)
         self.__children = set() if children is None else children
-
-    @property
-    def children(self) -> Set[DcrElement]:
-        return self.__children
-    
-    @children.setter
-    def children(self, value: Set[DcrElement]):
-        self.__children = value
-    
-
-class DcrNesting(DcrElement):
-    
-    def __init__(self, id, children=None, isTemplate=False):
-        super().__init__(id, isTemplate=isTemplate)
-        self.__children = set() if children is None else children
+        self.__childrenPending = False if template is None else template.childrenPending
 
     @property
     def children(self) -> Set[DcrElement]:
@@ -193,23 +155,59 @@ class DcrNesting(DcrElement):
     def children(self, value: Set[DcrElement]):
         self.__children = value
 
-
-class DcrSubgraph(DcrNesting):
+    @property
+    def childrenPending(self) -> bool:
+        return self.__childrenPending
     
-    def __init__(self, id, children=None):
-        super().__init__(id, children, True)
+    @childrenPending.setter
+    def childrenPending(self, value: bool):
+        self.__childrenPending = value
+
+    @property
+    def effectivePending(self) -> bool:
+        return self.childrenPending and not self.isTemplate
+    
+
+class DcrSubprocess(DcrActivity, DcrParentElement):
+    
+    def __init__(self, id, children=None, included=True, pending=False, computation=None, takesInput=False, template=None):
+        super().__init__(id=id, included=included, pending=pending, computation=computation, takesInput=takesInput, template=template, children=children)
+    
+    @property
+    def effectivePending(self) -> bool:
+        return (self.pending or self.childrenPending) and not self.isTemplate
+    
+
+class DcrNesting(DcrParentElement):
+    
+    def __init__(self, id, children=None, template = None):
+        super().__init__(id, children, template)
+    
+    @property
+    def included(self) -> bool:
+        return True
+
+
+class DcrSubgraph(DcrParentElement):
+    
+    def __init__(self, id, children=None, template = None):
+        super().__init__(id, children, template)
+    
+    @property
+    def included(self) -> bool:
+        return False
 
 
 class DcrSpawnContainer(DcrNesting):
     
-    def __init__(self, id, children=None):
-        super().__init__(id, children, False)
+    def __init__(self, id, children=None, template = None):
+        super().__init__(id, children, template)
 
 
 class DcrRelation:
     
-    def __init__(self, type, source, target, guard=None, forAll=False):
-        self.__relationType = type
+    def __init__(self, relationType: RelationType, source: DcrElement, target: DcrElement, guard: DcrComputation=None, forAll=False):
+        self.__relationType = relationType
         self.__source = source
         self.__target = target
         self.__guard = guard
@@ -240,11 +238,11 @@ class DcrRelation:
         self.__target = value
 
     @property
-    def guard(self) -> DcrExpression:
+    def guard(self) -> DcrComputation:
         return self.__guard
     
     @guard.setter
-    def guard(self, value: DcrExpression):
+    def guard(self, value: DcrComputation):
         self.__guard = value
 
     @property
@@ -263,12 +261,22 @@ class DcrRelation:
     
     def __eq__(self, value: object) -> bool:
         return hash(self) == hash(value)
+
+
+class DcrEffect(DcrRelation):
+    
+    def __init__(self, relationType, source, target, guard=None, forAll=False):
+        if relationType not in [RelationType.I, RelationType.E, RelationType.R, RelationType.N, RelationType.V, RelationType.S]:
+            raise Exception("Effects must be include, exclude, response, noresponse, setValue or spawn")
+        if relationType == RelationType.S and type(self) is not DcrSpawn:
+            raise Exception("Spawn relations must be instances of DcrSpawn, not DcrEffect directly")
+        super().__init__(relationType, source, target, guard, forAll)
     
 
-class DcrSpawn(DcrRelation):
+class DcrSpawn(DcrEffect):
     
-    def __init__(self, source, target, guard=None):
-        super().__init__(RelationType.S, source, target, guard)
+    def __init__(self, source, target, guard=None, forAll=False):
+        super().__init__(RelationType.S, source, target, guard, forAll)
         self.__spawned = 0
     
     @property
@@ -280,14 +288,24 @@ class DcrSpawn(DcrRelation):
         self.__spawned = value
 
 
+class DcrConstraint(DcrRelation):
+    
+    def __init__(self, relationType, source, target, guard=None, forAll=False):
+        if relationType not in [RelationType.C, RelationType.M]:
+            raise Exception("Constraints must be condition or milestone")
+        super().__init__(relationType, source, target, guard, forAll)
+
+
 class DcrGraph:
     
-    def __init__(self, id, template=None):
+    def __init__(self, id, events=set(), elements=set(), activityMap={}, relations=set(), template=None):
         self.__id = id
-        self.__events = set() if template is None else template.events
-        self.__elements = set() if template is None else template.elements
-        self.__activityMap = {} if template is None else template.labelMapping
-        self.__relations = set() if template is None else template.relations
+        self.__events = events if template is None else template.events
+        self.__elements = elements if template is None else template.elements
+        self.__activityMap = activityMap if template is None else template.labelMapping
+        self.__relations = relations if template is None else template.relations
+
+        self.initiateGraph()
 
     @property
     def ID(self) -> str:
@@ -332,9 +350,42 @@ class DcrGraph:
     def getParents(self, element: DcrElement) -> Set[DcrNesting | DcrSubprocess]:
         parents = set()
         for e in self.elements:
-            if element in e.children:
+            if isinstance(e, DcrParentElement) and element in e.children:
                 parents.add(e)
         return parents
+    
+    def updateIncluded(self, element: DcrElement, value: bool=None):
+        if value is not None:
+            element.included = value
+        if isinstance(element, DcrParentElement):
+          for child in element.children:
+              if not element.effectiveIncluded and child.parentsIncluded:
+                  child.parentsIncluded = False
+                  self.updateIncluded(child)
+              else:
+                  oldState = child.parentsIncluded
+                  child.parentsIncluded = True
+                  parents = self.getParents(child)
+                  for parent in parents:
+                      child.parentsIncluded = child.parentsIncluded and parent.effectiveIncluded
+                  if child.parentsIncluded != oldState:
+                      self.updateIncluded(child)
+    
+    def updatePending(self, element: DcrElement, value: bool=None):
+        if value is not None:
+            element.pending = value
+        parents = self.getParents(element)
+        for parent in parents:
+            if  element.effectivePending and element.included and not parent.childrenPending:
+                parent.childrenPending = True
+                self.updatePending(parent)
+            else:
+                oldState = parent.childrenPending
+                parent.childrenPending = False
+                for child in parent.children:
+                    parent.childrenPending = parent.childrenPending or child.effectivePending and child.included
+                if parent.childrenPending != oldState:
+                    self.updatePending(parent)
     
     def hasAsParent(self, child: DcrElement, element: DcrElement) -> bool:
         parents = self.getParents(child)
@@ -346,42 +397,57 @@ class DcrGraph:
                 res = res or self.hasAsParent(parent, element)
             return res
     
-    def initiateSpawnContainers(self, element: DcrElement, subgraph: DcrSubgraph):
+    def initiateSpawnContainer(self, element: DcrElement, subgraph: DcrSubgraph) -> Set[DcrSpawnContainer]:
+        element.isTemplate = True
+        containers = set()
         container = DcrSpawnContainer(element.ID + "Container", {element})
-        self.elements.add(container)
+        containers.add(container)
         for r in self.relations:
-            if r.source == element and (not self.hasAsParent(r.target, subgraph) or r.target.):
+            if r.source == element and (r.forAll or not self.hasAsParent(r.target, subgraph)):
                 r.source = container
-            if r.target == element and not self.hasAsParent(r.source, subgraph):
+            if r.target == element and (r.forAll or not self.hasAsParent(r.source, subgraph)):
                 r.target = container
-    # What about internal relations? How to show if a relation is to internal element or of said element?
-    # What about graphs with initial instantiations? 
-                
-        if isinstance(element, DcrNesting | DcrSubprocess) and not isinstance(element, DcrSubgraph):
+        if isinstance(element, DcrNesting | DcrSubprocess):
             for child in element.children:
-                self.initiateSpawnContainers(child, subgraph)
+                containers.update(self.initiateSpawnContainer(child, subgraph))
+        return containers
 
-    ### Suppose an element has two parents, a subprocess and a nesting. However, the nesting also has the same subprocess as a parent
-    ### does this count as the element having two subprocess parents?
-    ### If not, make subprocess a set instead and check its length in initiateGraph
-    def getNumSubprocessParents(self, element: DcrElement):
-        subprocesses = 0
+    def getSubprocessParents(self, element: DcrElement) -> Set[DcrSubprocess]:
+        subprocesses = set()
         parents = self.getParents(element)
         for parent in parents:
             if isinstance(parent, DcrSubprocess):
-                subprocesses += 1
+                subprocesses.add(parent)
             else:
-                subprocesses += self.getNumSubprocessParents(parent)
+                subprocesses.update(self.getSubprocessParents(parent))
         return subprocesses
 
     def initiateGraph(self):
+        spawnContainers = set()
         for element in self.elements:
-            if self.getNumSubprocessParents(element) > 1:
-                raise Exception("Element with ID {} is part of more than one subprocess".format(element.ID))
+            if len(self.getSubprocessParents(element)) > 1:
+                raise Exception("Element with ID {} is part of more than one subprocesses".format(element.ID))
 
             if isinstance(element, DcrSubgraph):
+                for relation in self.relations:
+                    if relation.target == element and not isinstance(relation, DcrSpawn):
+                        raise Exception("Subgraph with ID {} is the target of a non-spawn relation".format(element.ID))
+                    if relation.source == element:
+                        raise Exception("Subgraph with ID {} is the source of one or more relations and should not be".format(element.ID))
+                containers = set()
                 for child in element.children:
-                    self.initiateSpawnContainers(child, element)
+                    containers.update(self.initiateSpawnContainer(child, element))
+                element.children = containers
+                spawnContainers.update(containers)
+            if isinstance(element, DcrActivity):
+                if not element.effectiveIncluded:
+                    self.updateIncluded(element)
+                if element.effectivePending:
+                    self.updatePending(element)
+        self.elements.update(spawnContainers)
+        for relation in self.relations:
+            if isinstance(relation, DcrSpawn) and not isinstance(relation.target, DcrSubgraph):
+                raise Exception("Non-subgraph element with ID {} is the target of a spawn relation".format(relation.target.ID))
             
 
     def getEventID(self, activity: DcrActivity) -> str:
@@ -392,7 +458,7 @@ class DcrGraph:
     def getActivity(self, eventID: str) -> DcrActivity:
         return self.activity_map[eventID]
     
-    def getActivityFromID(self, ID: str) -> DcrActivity:
+    def getElementFromID(self, ID: str) -> DcrElement:
         for e in self.elements:
             if e.ID == ID:
                 return e
@@ -400,32 +466,3 @@ class DcrGraph:
 
     def getConstraints(self) -> int:
         return len(self.__relations)
-
-
-    """
-    def __repr__(self):
-        string = ""
-        for key, value in vars(self).items():
-            string += str(key.split("_")[-1]) + ": " + str(value) + "\n"
-        return string    
-
-    def __str__(self):
-        return self.__repr__()
-
-    def __eq__(self, other):
-        return self.conditions == other.conditions and self.responses == other.responses and self.includes == other.includes and self.excludes == other.excludes
-
-    def __lt__(self, other):
-        return str(self.obj) < str(other.obj)
-
-    def __getitem__(self, item):
-        for key, value in vars(self).items():
-            if item == key.split("_")[-1]:
-                return value
-        return set()
-
-    def __setitem__(self, item, value):
-        for key,_ in vars(self).items():
-            if item == key.split("_")[-1]:
-                setattr(self, key, value)
-    """
