@@ -1,15 +1,16 @@
 from enum import IntEnum
 from typing import Set, Dict, Callable
 from datetime import datetime
+from abc import ABC, abstractmethod
 
 
 class RelationType(IntEnum):
     S = 1 # spawn
     E = 2 # exclude
     I = 3 # include
-    N = 4 # noResponse
+    N = 4 # no-response
     R = 5 # response
-    V = 6 # setValue
+    V = 6 # value
     C = 7 # condition
     M = 8 # milestone
 
@@ -31,7 +32,7 @@ class DcrEvent:
 type DcrExpression = str | int | float | tuple[str, str]
 type DcrComputation = list[DcrExpression]
 
-class DcrElement:
+class DcrElement(ABC):
     
     def __init__(self, id, template=None):
         self.__id = id
@@ -55,12 +56,14 @@ class DcrElement:
         self.__parentsIncluded = value
 
     @property
+    @abstractmethod
     def effectiveIncluded(self) -> bool:
-        return self.parentsIncluded and not self.isTemplate
+        pass
 
     @property
+    @abstractmethod
     def effectivePending(self) -> bool:
-        return False
+        pass
 
     @property
     def isTemplate(self) -> bool:
@@ -167,11 +170,19 @@ class DcrParentElement(DcrElement):
     def effectivePending(self) -> bool:
         return self.childrenPending and not self.isTemplate
     
+    @property
+    def included(self) -> bool:
+        return True
+
+    @property
+    def effectiveIncluded(self) -> bool:
+        return self.parentsIncluded and not self.isTemplate
+    
 
 class DcrSubprocess(DcrActivity, DcrParentElement):
     
-    def __init__(self, id, children=None, included=True, pending=False, computation=None, takesInput=False, template=None):
-        super().__init__(id=id, included=included, pending=pending, computation=computation, takesInput=takesInput, template=template, children=children)
+    def __init__(self, id, children=None, included=True, pending=False, computation=None, template=None):
+        super().__init__(id=id, included=included, pending=pending, computation=computation, takesInput=False, template=template, children=children)
     
     @property
     def effectivePending(self) -> bool:
@@ -182,20 +193,12 @@ class DcrNesting(DcrParentElement):
     
     def __init__(self, id, children=None, template = None):
         super().__init__(id, children, template)
-    
-    @property
-    def included(self) -> bool:
-        return True
 
 
 class DcrSubgraph(DcrParentElement):
     
     def __init__(self, id, children=None, template = None):
         super().__init__(id, children, template)
-    
-    @property
-    def included(self) -> bool:
-        return False
 
 
 class DcrSpawnContainer(DcrNesting):
