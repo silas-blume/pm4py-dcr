@@ -13,7 +13,7 @@ class TestStandardDcr(unittest.TestCase):
         act4 = obj.DcrActivity("act4")
         act5 = obj.DcrActivity("act5", takesInput=True)
         act6 = obj.DcrActivity("act6")
-        act7 = obj.DcrActivity("act7")
+        act7 = obj.DcrActivity("act7", pending=True)
         act8 = obj.DcrActivity("act8", included=False)
 
         nest1 = obj.DcrNesting("nest1", {act1, act3})
@@ -32,7 +32,7 @@ class TestStandardDcr(unittest.TestCase):
             obj.DcrSpawn(act2, subG1, guard=[("source", "data"), ">", 2]),
             obj.DcrEffect(obj.RelationType.R, act5, act4),
             obj.DcrConstraint(obj.RelationType.M, act4, act5, forAll=True),
-            obj.DcrEffect(obj.RelationType.V, act2, act1),
+            obj.DcrSetValue(act2, act1, [("source", "data"), "*", 2.5]),
             obj.DcrEffect(obj.RelationType.N, act3, act6),
             obj.DcrEffect(obj.RelationType.E, subP1, nest1),
             obj.DcrEffect(obj.RelationType.I, act5, act3),
@@ -43,7 +43,9 @@ class TestStandardDcr(unittest.TestCase):
             obj.DcrEffect(obj.RelationType.I, act1, subP2),
             obj.DcrEffect(obj.RelationType.I, act6, act8),
             obj.DcrEffect(obj.RelationType.E, act6, subP2),
-            obj.DcrEffect(obj.RelationType.R, act6, act8)
+            obj.DcrEffect(obj.RelationType.R, act6, act8),
+            obj.DcrConstraint(obj.RelationType.M, act7, subP2),
+            obj.DcrEffect(obj.RelationType.R, act8, subP1)
         }
 
         self.graph = obj.DcrGraph("testGraph", elements={act1, act2, act3, act4, act5, act6, act7, act8, nest1, nest2, subP1, subP2, subG1}, activityMap=map, relations=relations)
@@ -56,7 +58,7 @@ class TestStandardDcr(unittest.TestCase):
         # Activity is now executed:
         self.assertIsNotNone(self.graph.getElementFromID("act1").executed)
 
-    def test_included(self):
+    def test_included(self):                                                ### add test for attempting to execute excluded event
         # Activity is effectively excluded if personally not included:
         self.assertFalse(self.graph.getElementFromID("act8").effectiveIncluded)
         # Include act8 and exclude subP2:
@@ -80,12 +82,12 @@ class TestStandardDcr(unittest.TestCase):
         # Activity is pending if it itself is pending:
         self.assertTrue(self.graph.getElementFromID("act8").pending)
         self.assertTrue(self.graph.getElementFromID("act8").effectivePending)
-        # Subprocess is pending if a child activity is pending -- even with a layer of nesting in between and not being pending itself:
+        # Nesting is effectivePending if any of its children are pending:
+        self.assertTrue(self.graph.getElementFromID("nest2").effectivePending)
+        # Subprocess is pending only if it itself is pending, independently of having children pending:
         self.assertFalse(self.graph.getElementFromID("subP2").pending)
-        self.assertTrue(self.graph.getElementFromID("subP2").effectivePending)
-        # Subprocess is pending if a child subprocess has a pending child activity -- even while not being pending itself:
-        self.assertFalse(self.graph.getElementFromID("subP1").pending)
-        self.assertTrue(self.graph.getElementFromID("subP1").effectivePending)
+        self.assertTrue(self.graph.getElementFromID("subP2").childrenPending)
+        self.assertFalse(self.graph.getElementFromID("subP2").effectivePending)
 
     def test_effect_include(self):
         sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
@@ -128,7 +130,7 @@ class TestStandardDcr(unittest.TestCase):
         sem.executeEvent(obj.DcrEvent("e_3", 1), self.graph)
         sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
         # Activity now has data equal to source of relation:
-        self.assertEqual(self.graph.getElementFromID("act1").data, 2)
+        self.assertEqual(self.graph.getElementFromID("act1").data, 5)
 
     def test_effect_spawn(self):
         # SpawnContainers initially contain only the template activities:
@@ -152,7 +154,7 @@ class TestStandardDcr(unittest.TestCase):
         self.assertEqual(len(sem.getRelations(self.graph.getElementFromID("act5"), self.graph)), len(sem.getRelations(self.graph.getElementFromID("act5Spawn1"), self.graph)))
         
 
-    def test_constraint_condition(self):
+    def test_constraint_condition(self):                  ### add test for unexecuted but excluded condition and executed and included condition. also test several conditions and mix of condition and milestone?
         # Condition source is included and unexecuted:
         self.assertTrue(self.graph.getElementFromID("act3").effectiveIncluded)
         self.assertIsNone(self.graph.getElementFromID("act3").executed)
@@ -160,7 +162,7 @@ class TestStandardDcr(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "Activity with ID .* is not enabled and cannot be executed"):
             sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
 
-    def test_constraint_milestone(self):
+    def test_constraint_milestone(self):                    ### same as above
         sem.executeEvent(obj.DcrEvent("e_3", 2), self.graph)
         sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
         sem.executeEvent(obj.DcrEvent("e_act5Spawn1"), self.graph)
@@ -192,7 +194,7 @@ class TestStandardDcr(unittest.TestCase):
         self.assertFalse(self.graph.getElementFromID("act1").included)
         self.assertFalse(self.graph.getElementFromID("act3").included)
     
-    def test_subprocess_execution(self):
+    def test_subprocess_execution(self):        ### add test for executed activity but still childrenpending
         # Subprocess is unexecuted:
         self.assertIsNone(self.graph.getElementFromID("subP1").executed)
         # Execution of act3 and act2:
@@ -200,6 +202,20 @@ class TestStandardDcr(unittest.TestCase):
         sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
         # Subprocess has now been executed:
         self.assertIsNotNone(self.graph.getElementFromID("subP1").executed)
+
+    def test_child_constrained_by_subParents_constraints(self):
+        # Make act8 and all parents included:
+        sem.executeEvent(obj.DcrEvent("e_6"), self.graph)
+        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
+        sem.executeEvent(obj.DcrEvent("e_3"), self.graph)
+        # Execution of act8 fails due to milestone constraint on subP2:
+        with self.assertRaisesRegex(Exception, "Activity with ID .* is not enabled and cannot be executed"):
+            sem.executeEvent(obj.DcrEvent("e_8"), self.graph)
+        # Make act7 not pending to remove constraint:
+        sem.executeEvent(obj.DcrEvent("e_7"), self.graph)
+        # Act8 is now enabled:
+        sem.executeEvent(obj.DcrEvent("e_8"), self.graph)
+        self.assertIsNotNone(self.graph.getElementFromID("act8").executed)
     
     def test_input(self):
         # Activity has no data:
@@ -209,7 +225,7 @@ class TestStandardDcr(unittest.TestCase):
         # Activity has taken input as data:
         self.assertEqual(self.graph.getElementFromID("act3").data, 1)
     
-    def test_computation_expression(self):
+    def test_computation(self):
         # act2 has no data:
         self.assertIsNone(self.graph.getElementFromID("act2").data)
         # Execution of act3 with input:
@@ -251,12 +267,23 @@ class TestStandardDcr(unittest.TestCase):
             sem.executeEvent(obj.DcrEvent("e_act5Spawn1", True), self.graph)
             
     def test_graph_accepting(self):
-        # Graph is initially accepting:
-        self.assertTrue(sem.isAccepting(self.graph))
-        # Execution of response relation:
+        # Graph is initially not accepting:
+        self.assertFalse(self.graph.isAccepting())
+        # Execute pending activity:
+        sem.executeEvent(obj.DcrEvent("e_7"), self.graph)
+        # Graph is now accepting:
+        self.assertTrue(self.graph.isAccepting())
+        # Make act2 pending:
+        sem.executeEvent(obj.DcrEvent("e_6"), self.graph)
         sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
+        sem.executeEvent(obj.DcrEvent("e_3"), self.graph)
+        # Graph is still accepting since subprocess parent of act2 is not pending:
+        self.assertTrue(self.graph.isAccepting())
+        # Make subP1 also pending:
+        sem.executeEvent(obj.DcrEvent("e_8"), self.graph)
         # Graph is no longer accepting:
-        self.assertFalse(sem.isAccepting(self.graph))
+        self.assertFalse(self.graph.isAccepting())
+
 
 class TestOne2ManyAndMany2Many(unittest.TestCase):
     graph = None
