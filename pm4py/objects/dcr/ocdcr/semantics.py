@@ -35,6 +35,8 @@ class DcrSemantics:
     @classmethod
     def getConstraints(cls, element: DcrElement, graph: DcrGraph) -> Set[DcrRelation]:
         constraints, _ = cls.getRelations(element, graph, "constraints")
+        for sub in graph.getSubprocessParents(element):
+            constraints.update(cls.getConstraints(sub, graph))
         return constraints
     
     @classmethod
@@ -193,7 +195,7 @@ class DcrSemantics:
                         else:
                             target.pending = False
                     case RelationType.V:
-                        target.data = relation.source.data
+                        target.data = cls.evaluateComputation(relation.value, graph, source, target)
 
     @classmethod
     def spawn(cls, subgraph: DcrSubgraph, graph: DcrGraph, spawnNumber: int):
@@ -271,10 +273,3 @@ class DcrSemantics:
         if isinstance(element, DcrParentElement):
           for child in element.children:
               cls.makeTemplate(child, spawned)
-
-    @classmethod
-    def isAccepting(cls, graph: DcrGraph) -> bool:
-        for e in graph.elements:
-            if isinstance(e, DcrActivity) and e.effectivePending and e.effectiveIncluded:
-                return False
-        return True
