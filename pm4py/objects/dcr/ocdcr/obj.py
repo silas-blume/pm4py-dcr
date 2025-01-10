@@ -10,7 +10,7 @@ class RelationType(IntEnum):
     I = 3 # include
     N = 4 # no-response
     R = 5 # response
-    V = 6 # value
+    V = 6 # set value
     C = 7 # condition
     M = 8 # milestone
 
@@ -184,10 +184,6 @@ class DcrSubprocess(DcrActivity, DcrParentElement):
     def __init__(self, id, children=None, included=True, pending=False, computation=None, template=None):
         super().__init__(id=id, included=included, pending=pending, computation=computation, takesInput=False, template=template, children=children)
     
-    @property
-    def effectivePending(self) -> bool:
-        return (self.pending or self.childrenPending) and not self.isTemplate
-    
 
 class DcrNesting(DcrParentElement):
     
@@ -273,6 +269,8 @@ class DcrEffect(DcrRelation):
             raise Exception("Effects must be include, exclude, response, noresponse, setValue or spawn")
         if relationType == RelationType.S and type(self) is not DcrSpawn:
             raise Exception("Spawn relations must be instances of DcrSpawn, not DcrEffect directly")
+        if relationType == RelationType.V and type(self) is not DcrSetValue:
+            raise Exception("Set value relations must be instances of DcrSetValue, not DcrEffect directly")
         super().__init__(relationType, source, target, guard, forAll)
     
 
@@ -289,6 +287,21 @@ class DcrSpawn(DcrEffect):
     @spawned.setter
     def spawned(self, value: int):
         self.__spawned = value
+
+
+class DcrSetValue(DcrEffect):
+    
+    def __init__(self, source, target, value, guard=None, forAll=False):
+        super().__init__(RelationType.V, source, target, guard, forAll)
+        self.__value = value
+
+    @property
+    def value(self) -> DcrComputation:
+        return self.__value
+    
+    @value.setter
+    def value(self, computation: DcrComputation):
+        self.__value = computation
 
 
 class DcrConstraint(DcrRelation):
@@ -401,8 +414,10 @@ class DcrGraph:
             return res
     
     def initiateSpawnContainers(self, element: DcrElement, subgraph: DcrSubgraph) -> Set[DcrSpawnContainer]:
-        element.isTemplate = True
         containers = set()
+        if isinstance(element, DcrSpawnContainer):
+            return containers
+        element.isTemplate = True
         container = DcrSpawnContainer(element.ID + "Container", {element})
         containers.add(container)
         for r in self.relations:
@@ -469,3 +484,9 @@ class DcrGraph:
 
     def getConstraints(self) -> int:
         return len(self.__relations)
+    
+    def isAccepting(self) -> bool:
+        for e in self.elements:
+            if isinstance(e, DcrActivity) and not self.getSubprocessParents(e) and e.pending and e.included:
+                return False
+        return True
