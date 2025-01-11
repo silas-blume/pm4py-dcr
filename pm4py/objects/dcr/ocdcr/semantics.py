@@ -30,7 +30,11 @@ class DcrSemantics:
     @classmethod
     def getEffects(cls, element: DcrElement, graph: DcrGraph) -> Set[DcrRelation]:
         _, effects = cls.getRelations(element, graph, "effects")
-        return effects
+        remove = set()
+        for e in effects:
+            if isinstance(e.source, DcrSpawnContainer) and not isinstance(e.target, DcrSpawnContainer) and cls.getTopSubgraph(e.target, graph) is cls.getTopSubgraph(e.source, graph) and not cls.getSpawnID(element).startswith(cls.getSpawnID(e.target)):
+                remove.add(e)
+        return effects - remove
     
     @classmethod
     def getConstraints(cls, element: DcrElement, graph: DcrGraph) -> Set[DcrRelation]:
@@ -85,7 +89,7 @@ class DcrSemantics:
             case "children":
                 return element + ".children"
             case "instance":
-                return "(''.join(re.findall('Spawn\d+', " + element + ".ID)))"
+                return "(cls.getSpawnID(" + element + "))"
             case _:
                 return None
     
@@ -116,30 +120,31 @@ class DcrSemantics:
     @classmethod
     def evaluateComputation(cls, computation: DcrComputation, graph: DcrGraph, source: DcrElement=None, target: DcrElement=None) -> any:
     # Unaccessed parameters may be used for evaluation of final string.
-        logging.captureWarnings(True) # Removes warning for using "\d" in some expressions
         for i, expression in enumerate(computation):
             computation[i] = cls.parseExpression(expression)
         executable = " ".join(computation)
         res = eval(executable)
-        logging.captureWarnings(False)
         return res
 
     @classmethod
     def executeEvent(cls, event: DcrEvent, graph: DcrGraph):
         activity = graph.getActivity(event.ID)
         if cls.isEnabled(activity, graph):
-            cls.execute(activity, graph, event.input)
+            if event.executionTime is None:
+                event.executionTime = datetime.now()
+            graph.events.append(event)
+            cls.execute(activity, graph, event.input, event.executionTime)
         else:
             raise Exception("Activity with ID {} is not enabled and cannot be executed".format(activity.ID))
     
     @classmethod
-    def execute(cls, element: DcrActivity | DcrSubprocess, graph: DcrGraph, input=None):
+    def execute(cls, element: DcrActivity | DcrSubprocess, graph: DcrGraph, input=None, executionTime=None):
         if element.takesInput and input is not None:
             element.data = input
         elif element.computation is not None:
             element.data = cls.evaluateComputation(element.computation, graph)
         graph.updatePending(element, False)
-        element.executed = datetime.now()
+        element.executed = datetime.now() if executionTime is None else executionTime
 
         effects = cls.getEffects(element, graph)
         for r in sorted(effects, key=lambda r: r.relationType):
@@ -166,7 +171,12 @@ class DcrSemantics:
     def relateToTarget(cls, source: DcrElement, target: DcrElement, relation: DcrRelation, graph: DcrGraph):
         if target.isTemplate:
             return
-        if isinstance(relation, DcrSpawn):
+        if target is relation.target and isinstance(relation.target, DcrSpawnContainer) and not isinstance(relation.source, DcrSpawnContainer) and cls.getTopSubgraph(relation.source, graph) is cls.getTopSubgraph(relation.target, graph):
+            for child in target.children:
+                if cls.getSpawnID(child).startswith(cls.getSpawnID(source)):
+                    cls.relateToTarget(source, child, relation, graph)
+                    break
+        elif isinstance(relation, DcrSpawn):
             if relation.guard is None or cls.evaluateComputation(relation.guard, graph, source, target):
                 relation.spawned += 1
                 cls.spawn(target, graph, relation.spawned)
@@ -199,7 +209,7 @@ class DcrSemantics:
 
     @classmethod
     def spawn(cls, subgraph: DcrSubgraph, graph: DcrGraph, spawnNumber: int):
-        spawnID = ''.join(re.findall('Spawn\d+', subgraph.ID))
+        spawnID = cls.getSpawnID(subgraph)
         elementDict = {}
         for spawnContainer in subgraph.children:
             elementDict[spawnContainer] = spawnContainer
@@ -238,7 +248,8 @@ class DcrSemantics:
         for template in elementDict:
             if isinstance(template, DcrSubgraph):
                 for child in elementDict[template].children:
-                    cls.makeTemplate(child, list(elementDict.values()))
+                    cls.makeTemplate(child, set(elementDict.values()))
+                    cls.spawnSubContainers(child, set(elementDict.values()), graph)
 
     @classmethod
     def spawnElements(cls, element: DcrElement, graph: DcrGraph, spawnNumber: int, spawnID: str) -> dict[DcrElement, DcrElement]:
@@ -248,11 +259,11 @@ class DcrSemantics:
             for child in element.children:
                 spawns.update(cls.spawnElements(child, graph, spawnNumber, spawnID))
         
-        if ''.join(re.findall('Spawn\d+', element.ID)) == spawnID:
+        if cls.getSpawnID(element) == spawnID: # ensures that we only spawn template elements from the correct spawn level
             if type(element) is DcrSubgraph:
                 spawns[element] = DcrSubgraph("{}Spawn{}".format(element.ID, spawnNumber))
             elif type(element) is DcrSpawnContainer:
-                spawns[element] = element   ### maintains containers but also keeps subgraphs within subgraphs on the same containers across multiple instantiations of outer subgraph
+                spawns[element] = element # maintains containers and also keeps subgraphs within subgraphs on the same containers across multiple instantiations of outer subgraph
             elif type(element) is DcrNesting:
                 spawns[element] = DcrNesting("{}Spawn{}".format(element.ID, spawnNumber))
             elif type(element) is DcrSubprocess:
@@ -267,9 +278,41 @@ class DcrSemantics:
         return spawns
     
     @classmethod
-    def makeTemplate(cls, element: DcrElement, spawned: list[DcrElement]):
+    def getSpawnID(cls, element: DcrElement):
+        return ''.join(re.findall('Spawn\d+', element.ID))
+    
+    @classmethod
+    def makeTemplate(cls, element: DcrElement, spawned: Set[DcrElement]):
         if not isinstance(element, DcrSpawnContainer) and element in spawned:
             element.isTemplate = True
         if isinstance(element, DcrParentElement):
           for child in element.children:
               cls.makeTemplate(child, spawned)
+
+    @classmethod
+    def spawnSubContainers(cls, container: DcrSpawnContainer, spawned: Set[DcrElement], graph: DcrGraph):
+        newChild = None
+        for child in container.children:
+            if child in spawned:
+                newChild = child
+                break
+        subContainer = DcrSpawnContainer(newChild.ID + "Container", {newChild})
+        graph.elements.add(subContainer)
+        container.children.remove(newChild)
+        container.children.add(subContainer)
+        if isinstance(newChild, DcrNesting | DcrSubprocess):
+            for child in newChild.children:
+                if isinstance(child, DcrSpawnContainer):
+                    cls.spawnSubContainers(child, spawned, graph)
+
+
+    @classmethod
+    def getTopSubgraph(cls, element: DcrElement, graph: DcrGraph, topSub=None):
+        parents = graph.getParents(element)
+        for parent in parents:
+            if isinstance(parent, DcrSubgraph):
+                topSub = parent
+                break
+        if parents:
+            return cls.getTopSubgraph(list(parents)[0], graph, topSub)
+        return topSub
