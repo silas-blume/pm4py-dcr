@@ -419,6 +419,9 @@ class TestOne2ManyAndMany2Many(unittest.TestCase):
         self.assertTrue(self.graph.getElementFromID("act5Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act5Spawn2").pending)
     
+
+#### FOR ALL OUTER-INNER: ALSO TEST CONSTRAINTS ###
+
     def test_subOuter_o2m_subInner(self):
         # Spawn 2 versions of act5 and subG2 and, for each of the latter, spawn 2 versions of act8 for a total of 4:
         sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
