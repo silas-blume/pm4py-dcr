@@ -312,11 +312,11 @@ class TestOne2ManyAndMany2Many(unittest.TestCase):
             obj.DcrEffect(obj.RelationType.R, act3, act4, forAll=True, guard=[("target", "data"), "and", ("source", "data")]),
             obj.DcrEffect(obj.RelationType.R, act3, act5, guard=[("target", "data"), "and", ("source", "data")]),
             obj.DcrEffect(obj.RelationType.R, act4, act2, guard=[("source", "data")]),
-            obj.DcrEffect(obj.RelationType.R, act5, act8, guard=[("target", "instance"), "inInstance", ("source", "instance"), "and", ("target", "data"), "and", ("source", "data")]),
-            obj.DcrEffect(obj.RelationType.R, act6, act8, guard=[("target", "data"), "and", ("source", "data")]),
+            obj.DcrEffect(obj.RelationType.R, act5, act8, guard=[("target", "data"), "and", ("source", "data")]),
+            obj.DcrEffect(obj.RelationType.R, act6, act8, forAll=True, guard=[("target", "data"), "and", ("source", "data")]),
             obj.DcrSpawn(act7, subG2),
-            obj.DcrEffect(obj.RelationType.R, act8, act5, guard=[("source", "instance"), "inInstance", ("target", "instance"), "and", ("target", "data"), "and", ("source", "data")]),
-            obj.DcrEffect(obj.RelationType.R, act8, act6, guard=[("target", "data"), "and", ("source", "data")])
+            obj.DcrEffect(obj.RelationType.R, act8, act5, guard=[("target", "data"), "and", ("source", "data")]),
+            obj.DcrEffect(obj.RelationType.R, act8, act6, forAll=True, guard=[("target", "data"), "and", ("source", "data")])
         }
 
         self.graph = obj.DcrGraph("testGraph", elements={act1, act2, act3, act4, act5, act6, act7, act8, subG1, subG2, subG3}, activityMap=map, relations=relations)
@@ -443,7 +443,7 @@ class TestOne2ManyAndMany2Many(unittest.TestCase):
         sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn1", True), self.graph)
         sem.executeEvent(obj.DcrEvent("e_act8Spawn2Spawn1", True), self.graph)
         sem.executeEvent(obj.DcrEvent("e_act5Spawn1"), self.graph)
-        # act8Spawn1Spawn1 is now pending but no others passed the guard. act8Spawn2Spawn1 had positive data but was in other spawn string:
+        # act8Spawn1Spawn1 is now pending but act8Spawn1Spawn2 did not pass the guard. act8Spawn2Spawn1 had positive data but was in other spawn tree:
         self.assertTrue(self.graph.getElementFromID("act8Spawn1Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn1Spawn2").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn1").pending)
