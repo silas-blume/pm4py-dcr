@@ -1,24 +1,27 @@
-from enum import IntEnum
+from enum import IntEnum, auto
 from typing import Set, Dict, Callable
 from datetime import datetime
 from abc import ABC, abstractmethod
 
 
+# Order of enum allows for easily sorting effects for correct order of execution
 class RelationType(IntEnum):
-    S = 1 # spawn
-    E = 2 # exclude
-    I = 3 # include
-    N = 4 # no-response
-    R = 5 # response
-    V = 6 # set value
-    C = 7 # condition
-    M = 8 # milestone
+    S = auto() # spawn
+    E = auto() # exclude
+    I = auto() # include
+    N = auto() # no-response
+    R = auto() # response
+    V = auto() # set value
+    C = auto() # condition
+    M = auto() # milestone
 
 class DcrEvent:
     
-    def __init__(self, id, input=None):
+    def __init__(self, id, input=None, time=None):
         self.__id = id
         self.__input = input
+        self.__executionTime = time
+
 
     @property
     def ID(self) -> str:
@@ -27,6 +30,14 @@ class DcrEvent:
     @property
     def input(self) -> any:
         return self.__input
+    
+    @property
+    def executionTime(self) -> datetime:
+        return self.__executionTime
+    
+    @executionTime.setter
+    def executionTime(self, value: datetime):
+        self.__executionTime = value
     
 
 type DcrExpression = str | int | float | tuple[str, str]
@@ -146,6 +157,8 @@ class DcrActivity(DcrElement):
 class DcrParentElement(DcrElement):
     
     def __init__(self, id, children=None, template = None):
+        if not (isinstance(self, DcrNesting) or isinstance(self, DcrSubgraph) or isinstance(self, DcrSubprocess)):
+            raise Exception("Dcr elements with children must be instances of DcrNesting, DcrSubgraph, DcrSubprocess or DcrSpawnContainer, not DcrParentElement directly")
         super().__init__(id, template)
         self.__children = set() if children is None else children
         self.__childrenPending = False if template is None else template.childrenPending
@@ -206,6 +219,8 @@ class DcrSpawnContainer(DcrNesting):
 class DcrRelation:
     
     def __init__(self, relationType: RelationType, source: DcrElement, target: DcrElement, guard: DcrComputation=None, forAll=False):
+        if not (isinstance(self, DcrEffect) or isinstance(self, DcrConstraint,)):
+            raise Exception("Relations must be instances of DcrConstraint, DcrEffect, DcrSetValue or DcrSpawn, not DcrRelation Directly")
         self.__relationType = relationType
         self.__source = source
         self.__target = target
@@ -266,7 +281,7 @@ class DcrEffect(DcrRelation):
     
     def __init__(self, relationType, source, target, guard=None, forAll=False):
         if relationType not in [RelationType.I, RelationType.E, RelationType.R, RelationType.N, RelationType.V, RelationType.S]:
-            raise Exception("Effects must be include, exclude, response, noresponse, setValue or spawn")
+            raise Exception("Effects must be include, exclude, response, noresponse, setValue, or spawn")
         if relationType == RelationType.S and type(self) is not DcrSpawn:
             raise Exception("Spawn relations must be instances of DcrSpawn, not DcrEffect directly")
         if relationType == RelationType.V and type(self) is not DcrSetValue:
@@ -314,7 +329,7 @@ class DcrConstraint(DcrRelation):
 
 class DcrGraph:
     
-    def __init__(self, id, events=set(), elements=set(), activityMap={}, relations=set(), template=None):
+    def __init__(self, id, events=[], elements=set(), activityMap={}, relations=set(), template=None):
         self.__id = id
         self.__events = events if template is None else template.events
         self.__elements = elements if template is None else template.elements
@@ -332,11 +347,11 @@ class DcrGraph:
         self.__id = value
 
     @property
-    def events(self) -> Set[DcrEvent]:
+    def events(self) -> list[DcrEvent]:
         return self.__events
 
     @events.setter
-    def events(self, value: Set[DcrEvent]):
+    def events(self, value: list[DcrEvent]):
         self.__events = value
 
     @property
