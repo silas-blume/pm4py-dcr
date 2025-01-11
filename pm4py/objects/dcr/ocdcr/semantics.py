@@ -41,7 +41,11 @@ class DcrSemantics:
         constraints, _ = cls.getRelations(element, graph, "constraints")
         for sub in graph.getSubprocessParents(element):
             constraints.update(cls.getConstraints(sub, graph))
-        return constraints
+        remove = set()
+        for c in constraints:
+            if isinstance(c.source, DcrSpawnContainer) and not isinstance(c.target, DcrSpawnContainer) and cls.getTopSubgraph(c.target, graph) is cls.getTopSubgraph(c.source, graph) and not cls.getSpawnID(c.source).startswith(cls.getSpawnID(element)):
+                remove.add(c)
+        return constraints - remove
     
     @classmethod
     def isEnabled(cls, element: DcrActivity | DcrSubprocess, graph: DcrGraph) -> bool:
@@ -51,21 +55,25 @@ class DcrSemantics:
             return False
         constraints = cls.getConstraints(element, graph)
         for r in constraints:
-            if not cls.constraintPasses(r.source, element, r.relationType, r.guard, graph):
+            if not cls.constraintPasses(r.source, element, r, graph):
                 return False
         return True
     
     @classmethod
-    def constraintPasses(cls, source: DcrElement, target: DcrElement, relationType: RelationType, guard: DcrComputation, graph: DcrGraph) -> bool:
+    def constraintPasses(cls, source: DcrElement, target: DcrElement, constraint: DcrConstraint, graph: DcrGraph) -> bool:
+        if target is constraint.target and isinstance(target, DcrSpawnContainer) and not isinstance(constraint.source, DcrSpawnContainer) and cls.getTopSubgraph(constraint.source, graph) is cls.getTopSubgraph(constraint.target, graph):
+            for child in target.children:
+                if cls.getSpawnID(child) == cls.getSpawnID(source):
+                    return cls.constraintPasses(source, child, constraint, graph)
         if isinstance(source, DcrNesting):
             res = True
             for child in source.children:
-                res = res and cls.constraintPasses(child, target, relationType, guard, graph)
+                res = res and cls.constraintPasses(child, target, constraint, graph)
             return res
-        if guard is None or cls.evaluateComputation(guard, graph, source, target):
-            if relationType == RelationType.C and not source.executed:
+        if source.effectiveIncluded and (constraint.guard is None or cls.evaluateComputation(constraint.guard, graph, source, target)):
+            if constraint.relationType == RelationType.C and not source.executed:
                 return False
-            if relationType == RelationType.M and source.effectiveIncluded and source.effectivePending:
+            if constraint.relationType == RelationType.M and source.effectivePending:
                 return False
         return True
     
@@ -155,37 +163,37 @@ class DcrSemantics:
     @classmethod
     def executeSubprocessParent(cls, element: DcrElement, graph: DcrGraph) -> int:
         parents = graph.getParents(element)
-        sub = 0
+        sub = False
         for parent in parents:
             if isinstance(parent, DcrSubprocess):
-                sub += 1
+                sub = True
                 if cls.isEnabled(parent, graph):
                     cls.execute(parent, graph)
             elif isinstance(parent, DcrNesting):
-                sub += cls.executeSubprocessParent(parent, graph)
+                sub = cls.executeSubprocessParent(parent, graph)
             if sub:
                 break
         return sub
 
     @classmethod
-    def relateToTarget(cls, source: DcrElement, target: DcrElement, relation: DcrRelation, graph: DcrGraph):
+    def relateToTarget(cls, source: DcrElement, target: DcrElement, effect: DcrEffect, graph: DcrGraph):
         if target.isTemplate:
             return
-        if target is relation.target and isinstance(relation.target, DcrSpawnContainer) and not isinstance(relation.source, DcrSpawnContainer) and cls.getTopSubgraph(relation.source, graph) is cls.getTopSubgraph(relation.target, graph):
+        if target is effect.target and isinstance(target, DcrSpawnContainer) and not isinstance(effect.source, DcrSpawnContainer) and cls.getTopSubgraph(effect.source, graph) is cls.getTopSubgraph(effect.target, graph):
             for child in target.children:
-                if cls.getSpawnID(child).startswith(cls.getSpawnID(source)):
-                    cls.relateToTarget(source, child, relation, graph)
-                    break
-        elif isinstance(relation, DcrSpawn):
-            if relation.guard is None or cls.evaluateComputation(relation.guard, graph, source, target):
-                relation.spawned += 1
-                cls.spawn(target, graph, relation.spawned)
+                if cls.getSpawnID(child) == cls.getSpawnID(source):
+                    cls.relateToTarget(source, child, effect, graph)
+                    return
+        elif isinstance(effect, DcrSpawn):
+            if effect.guard is None or cls.evaluateComputation(effect.guard, graph, source, target):
+                effect.spawned += 1
+                cls.spawn(target, graph, effect.spawned)
         elif isinstance(target, DcrNesting):
             for child in target.children:
-                cls.relateToTarget(source, child, relation, graph)
+                cls.relateToTarget(source, child, effect, graph)
         else:
-            if relation.guard is None or cls.evaluateComputation(relation.guard, graph, source, target):
-                match relation.relationType:
+            if effect.guard is None or cls.evaluateComputation(effect.guard, graph, source, target):
+                match effect.relationType:
                     case RelationType.I:
                         graph.updateIncluded(target, True)
                         if target.pending:
@@ -205,7 +213,7 @@ class DcrSemantics:
                         else:
                             target.pending = False
                     case RelationType.V:
-                        target.data = cls.evaluateComputation(relation.value, graph, source, target)
+                        target.data = cls.evaluateComputation(effect.value, graph, source, target)
 
     @classmethod
     def spawn(cls, subgraph: DcrSubgraph, graph: DcrGraph, spawnNumber: int):
@@ -235,9 +243,7 @@ class DcrSemantics:
                         else:
                             graph.relations.add(DcrConstraint(i.relationType, elementDict[i.source], elementDict[template], i.guard))
                 for o in outgoing:
-                    if isinstance(o, DcrSpawn):
-                        continue
-                    elif o.source == template:
+                    if o.source == template:
                         if isinstance(o.target, DcrSpawnContainer):
                             if isinstance(o, DcrEffect):
                                 graph.relations.add(DcrEffect(o.relationType, elementDict[template], elementDict[o.target], o.guard))
@@ -268,8 +274,6 @@ class DcrSemantics:
                 spawns[element] = DcrNesting("{}Spawn{}".format(element.ID, spawnNumber))
             elif type(element) is DcrSubprocess:
                 spawns[element] = DcrSubprocess("{}Spawn{}".format(element.ID, spawnNumber), template=element)
-                eventID = "e_{}Spawn{}".format(element.ID, spawnNumber)
-                graph.activityMap[eventID] = spawns[element]
             else:
                 spawns[element] = DcrActivity("{}Spawn{}".format(element.ID, spawnNumber), template=element)
                 eventID = "e_{}Spawn{}".format(element.ID, spawnNumber)
