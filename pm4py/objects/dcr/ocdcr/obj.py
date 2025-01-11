@@ -336,7 +336,7 @@ class DcrGraph:
         self.__activityMap = activityMap if template is None else template.labelMapping
         self.__relations = relations if template is None else template.relations
 
-        self.initiateGraph()
+        self.initialiseGraph()
 
     @property
     def ID(self) -> str:
@@ -377,6 +377,8 @@ class DcrGraph:
     @relations.setter
     def relations(self, value: Set[DcrRelation]):
         self.__relations = value
+
+
 
     def getParents(self, element: DcrElement) -> Set[DcrParentElement]:
         parents = set()
@@ -431,15 +433,16 @@ class DcrGraph:
     def initiateSpawnContainers(self, element: DcrElement, subgraph: DcrSubgraph) -> Set[DcrSpawnContainer]:
         containers = set()
         if isinstance(element, DcrSpawnContainer):
-            return containers
-        element.isTemplate = True
-        container = DcrSpawnContainer(element.ID + "Container", {element})
-        containers.add(container)
-        for r in self.relations:
-            if r.source == element and (r.forAll or not self.hasAsParent(r.target, subgraph)):
-                r.source = container
-            if r.target == element and (r.forAll or not self.hasAsParent(r.source, subgraph)):
-                r.target = container
+            containers.add(element)
+        else:
+            element.isTemplate = True
+            container = DcrSpawnContainer(element.ID + "Container", {element})
+            containers.add(container)
+            for r in self.relations:
+                if r.source == element and (r.forAll or not self.hasAsParent(r.target, subgraph)):
+                    r.source = container
+                if r.target == element and (r.forAll or not self.hasAsParent(r.source, subgraph)):
+                    r.target = container
         if isinstance(element, DcrNesting | DcrSubprocess):
             for child in element.children:
                 containers.update(self.initiateSpawnContainers(child, subgraph))
@@ -455,7 +458,7 @@ class DcrGraph:
                 subprocesses.update(self.getSubprocessParents(parent))
         return subprocesses
 
-    def initiateGraph(self):
+    def initialiseGraph(self):
         spawnContainers = set()
         for element in self.elements:
             if len(self.getSubprocessParents(element)) > 1:
