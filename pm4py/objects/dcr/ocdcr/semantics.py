@@ -2,7 +2,6 @@ from typing import Set
 from datetime import datetime
 from keyword import iskeyword
 import re
-import logging
 
 
 from obj import DcrGraph, DcrElement, DcrParentElement, DcrNesting, DcrSubprocess, DcrSubgraph, DcrSpawnContainer, DcrActivity, DcrRelation, DcrEffect, DcrSpawn, DcrConstraint, RelationType, DcrExpression, DcrComputation, DcrExecution
