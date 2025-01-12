@@ -24,7 +24,7 @@ class DcrExecution:
 
 
     @property
-    def ID(self) -> str:
+    def activityID(self) -> str:
         return self.__id
     
     @property
@@ -338,11 +338,11 @@ class DcrConstraint(DcrRelation):
 
 class DcrGraph:
     
-    def __init__(self, id, executions=[], elements=set(), activityMap={}, relations=set(), template=None):
+    def __init__(self, id, executions=[], elements=set(), relations=set(), template=None):
         self.__id = id
         self.__executions = executions if template is None else template.executions
         self.__elements = elements if template is None else template.elements
-        self.__activityMap = activityMap if template is None else template.activityMap
+        self.__activityMap = {}
         self.__labelMap = {}
         self.__relations = relations if template is None else template.relations
 
@@ -500,6 +500,8 @@ class DcrGraph:
                 spawnContainers.update(containers)
 
             if isinstance(element, DcrActivity):
+                if type(element) is DcrActivity:
+                    self.activityMap[element.ID] = element
                 if element.label in self.labelMap:
                     self.labelMap[element.label].add(element)
                 else:
