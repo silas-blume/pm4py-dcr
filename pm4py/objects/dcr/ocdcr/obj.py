@@ -513,7 +513,7 @@ class DcrGraph:
 
         self.elements.update(spawnContainers)
         for relation in self.relations:
-            if isinstance(relation, DcrSpawn) and not isinstance(relation.target, DcrSubgraph):
+            if isinstance(relation, DcrSpawn) and not isinstance(relation.target, DcrSubgraph | DcrSpawnContainer):
                 raise Exception("Non-subgraph element with ID {} is the target of a spawn relation".format(relation.target.ID))
             
 
