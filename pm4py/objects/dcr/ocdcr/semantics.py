@@ -235,9 +235,9 @@ class DcrSemantics:
         graph.elements.update(elementDict.values())
         for template in elementDict:
             if isinstance(template, DcrSubgraph):
-                for child in elementDict[template].children:
-                    cls.makeTemplate(child, set(elementDict.values()))
-                    cls.spawnSubContainers(child, set(elementDict.values()), graph)
+                for container in elementDict[template].children:
+                    cls.makeTemplate(container, set(elementDict.values()))
+                    cls.spawnSubContainers(container, set(elementDict.values()), graph)
 
     @classmethod
     def spawnElements(cls, element: DcrElement, graph: DcrGraph, spawnNumber: int, spawnID: str) -> dict[DcrElement, DcrElement]:
