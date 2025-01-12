@@ -5,7 +5,7 @@ import re
 import logging
 
 
-from obj import DcrGraph, DcrElement, DcrParentElement, DcrNesting, DcrSubprocess, DcrSubgraph, DcrSpawnContainer, DcrActivity, DcrRelation, DcrEffect, DcrSpawn, DcrConstraint, RelationType, DcrExpression, DcrComputation, DcrEvent
+from obj import DcrGraph, DcrElement, DcrParentElement, DcrNesting, DcrSubprocess, DcrSubgraph, DcrSpawnContainer, DcrActivity, DcrRelation, DcrEffect, DcrSpawn, DcrConstraint, RelationType, DcrExpression, DcrComputation, DcrExecution
 
 
 class DcrSemantics:
@@ -122,13 +122,13 @@ class DcrSemantics:
         return eval(executable)
 
     @classmethod
-    def executeEvent(cls, event: DcrEvent, graph: DcrGraph):
-        activity = graph.getActivity(event.ID)
+    def executeActivity(cls, execution: DcrExecution, graph: DcrGraph):
+        activity = graph.getActivity(execution.ID)
         if cls.isEnabled(activity, graph):
-            if event.executionTime is None:
-                event.executionTime = datetime.now()
-            graph.events.append(event)
-            cls.execute(activity, graph, event.input, event.executionTime)
+            if execution.time is None:
+                execution.time = datetime.now()
+            graph.executions.append(execution)
+            cls.execute(activity, graph, execution.input, execution.time)
         else:
             raise Exception("Activity with ID {} is not enabled and cannot be executed".format(activity.ID))
     
