@@ -165,7 +165,10 @@ class DcrSemantics:
     def relateToTarget(cls, source: DcrElement, target: DcrElement, effect: DcrEffect, graph: DcrGraph):
         if target.isTemplate:
             return
-        if isinstance(effect, DcrSpawn):
+        if isinstance(target, DcrNesting):
+            for child in target.children:
+                cls.relateToTarget(source, child, effect, graph)
+        elif isinstance(effect, DcrSpawn):
             if effect.guard is None or cls.evaluateComputation(effect.guard, graph, source, target):
                 effect.spawned += 1
                 cls.spawn(target, graph, effect.spawned)
