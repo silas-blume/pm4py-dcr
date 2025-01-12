@@ -50,35 +50,35 @@ class TestStandardDcr(unittest.TestCase):
 
         self.graph = obj.DcrGraph("testGraph", elements={act1, act2, act3, act4, act5, act6, act7, act8, nest1, nest2, subP1, subP2, subG1}, activityMap=map, relations=relations)
     
-    def test_execute_event(self):
+    def test_execute_activity(self):
         # Activity is not executed:
         self.assertIsNone(self.graph.getElementFromID("act1").executed)
-        # Execution of event:
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
+        # Execution of activity:
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
         # Activity is now executed:
         self.assertIsNotNone(self.graph.getElementFromID("act1").executed)
 
-    def test_included(self):                                                ### add test for attempting to execute excluded event
+    def test_included(self):                                                ### add test for attempting to execute excluded activity
         # Activity is effectively excluded if personally not included:
         self.assertFalse(self.graph.getElementFromID("act8").effectiveIncluded)
         # Include act8 and exclude subP2:
-        sem.executeEvent(obj.DcrEvent("e_6"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_6"), self.graph)
         # Activity is effectively excluded if a parent subprocess is excluded -- even with a layer of nesting in between:
         self.assertFalse(self.graph.getElementFromID("act8").effectiveIncluded)
         # Include subP2 and exclude subP1:
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
         # Activity is effectively excluded if a parent subprocess of a parent subprocess is excluded:
         self.assertFalse(self.graph.getElementFromID("act8").effectiveIncluded)
         # Include subP1:
-        sem.executeEvent(obj.DcrEvent("e_3"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3"), self.graph)
         # Activity is effectively included if it and all its parents are included:
         self.assertTrue(self.graph.getElementFromID("act8").effectiveIncluded)
     
     def test_pending(self):
         # Make act8 pending and included:
-        sem.executeEvent(obj.DcrEvent("e_6"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_3"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_6"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3"), self.graph)
         # Activity is pending if it itself is pending:
         self.assertTrue(self.graph.getElementFromID("act8").pending)
         self.assertTrue(self.graph.getElementFromID("act8").effectivePending)
@@ -90,11 +90,11 @@ class TestStandardDcr(unittest.TestCase):
         self.assertFalse(self.graph.getElementFromID("subP2").effectivePending)
 
     def test_effect_include(self):
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
         # Subprocess is excluded:
         self.assertFalse(self.graph.getElementFromID("subP1").included)
         # Execution of include relation:
-        sem.executeEvent(obj.DcrEvent("e_3"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3"), self.graph)
         # Subprocess is now included:
         self.assertTrue(self.graph.getElementFromID("subP1").included)
 
@@ -102,7 +102,7 @@ class TestStandardDcr(unittest.TestCase):
         # Subprocess is included:
         self.assertTrue(self.graph.getElementFromID("subP1").included)
         # Execution of exclude relation:
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
         # Subprocess is now excluded:
         self.assertFalse(self.graph.getElementFromID("subP1").included)
 
@@ -110,16 +110,16 @@ class TestStandardDcr(unittest.TestCase):
         # Activity is not pending:
         self.assertFalse(self.graph.getElementFromID("act2").pending)
         # Execution of response relation:
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
         # Activity is now pending:
         self.assertTrue(self.graph.getElementFromID("act2").pending)
 
     def test_effect_noresponse(self):
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
         # Activity is pending:
         self.assertTrue(self.graph.getElementFromID("act6").pending)
         # Execution of noresponse relation:
-        sem.executeEvent(obj.DcrEvent("e_3"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3"), self.graph)
         # Activity is no longer pending:
         self.assertFalse(self.graph.getElementFromID("act6").pending)
 
@@ -127,8 +127,8 @@ class TestStandardDcr(unittest.TestCase):
         # Activity has no data:
         self.assertIsNone(self.graph.getElementFromID("act1").data)
         # Execution of setvalue relation:
-        sem.executeEvent(obj.DcrEvent("e_3", 1), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3", 1), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_2"), self.graph)
         # Activity now has data equal to source of relation:
         self.assertEqual(self.graph.getElementFromID("act1").data, 5)
 
@@ -142,8 +142,8 @@ class TestStandardDcr(unittest.TestCase):
         self.assertIsNone(self.graph.getElementFromID("act4Spawn1"))
         self.assertIsNone(self.graph.getElementFromID("act5Spawn1"))
         # Execution:
-        sem.executeEvent(obj.DcrEvent("e_3", 2), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3", 2), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_2"), self.graph)
         # Spawncontainers now also contain the spawned activities:
         self.assertEqual(len(self.graph.getElementFromID("act4Container").children), 2)
         self.assertIn(self.graph.getElementFromID("act4Spawn1"), self.graph.getElementFromID("act4Container").children)
@@ -160,26 +160,26 @@ class TestStandardDcr(unittest.TestCase):
         self.assertIsNone(self.graph.getElementFromID("act3").executed)
         # Execution fails due to constraint:
         with self.assertRaisesRegex(Exception, "Activity with ID .* is not enabled and cannot be executed"):
-            sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
+            sem.executeActivity(obj.DcrExecution("e_2"), self.graph)
 
     def test_constraint_milestone(self):                    ### same as above
-        sem.executeEvent(obj.DcrEvent("e_3", 2), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act5Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3", 2), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act5Spawn1"), self.graph)
         # Milestone source is pending and included:
         self.assertTrue(self.graph.getElementFromID("act4Spawn1").effectivePending)
         # Execution fails due to constraint:
         with self.assertRaisesRegex(Exception, "Activity with ID .* is not enabled and cannot be executed"):
-            sem.executeEvent(obj.DcrEvent("e_act5Spawn1"), self.graph)
+            sem.executeActivity(obj.DcrExecution("e_act5Spawn1"), self.graph)
 
     def test_relation_from_nesting(self):
-        sem.executeEvent(obj.DcrEvent("e_3", 2), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act5Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3", 2), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act5Spawn1"), self.graph)
         # Target activity is pending:
         self.assertTrue(self.graph.getElementFromID("act4Spawn1").pending)
         # Execution of noresponse relation from inside a nesting:
-        sem.executeEvent(obj.DcrEvent("e_3"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3"), self.graph)
         # Target activity is no longer pending:
         self.assertFalse(self.graph.getElementFromID("act4Spawn1").pending)
     
@@ -188,8 +188,8 @@ class TestStandardDcr(unittest.TestCase):
         self.assertTrue(self.graph.getElementFromID("act1").included)
         self.assertTrue(self.graph.getElementFromID("act3").included)
         # Execution of exclude relation on nesting:
-        sem.executeEvent(obj.DcrEvent("e_3", 1), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3", 1), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_2"), self.graph)
         # Activities are now excluded:
         self.assertFalse(self.graph.getElementFromID("act1").included)
         self.assertFalse(self.graph.getElementFromID("act3").included)
@@ -198,30 +198,30 @@ class TestStandardDcr(unittest.TestCase):
         # Subprocess is unexecuted:
         self.assertIsNone(self.graph.getElementFromID("subP1").executed)
         # Execution of act3 and act2:
-        sem.executeEvent(obj.DcrEvent("e_3", 1), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3", 1), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_2"), self.graph)
         # Subprocess has now been executed:
         self.assertIsNotNone(self.graph.getElementFromID("subP1").executed)
 
     def test_child_constrained_by_subParents_constraints(self):
         # Make act8 and all parents included:
-        sem.executeEvent(obj.DcrEvent("e_6"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_3"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_6"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3"), self.graph)
         # Execution of act8 fails due to milestone constraint on subP2:
         with self.assertRaisesRegex(Exception, "Activity with ID .* is not enabled and cannot be executed"):
-            sem.executeEvent(obj.DcrEvent("e_8"), self.graph)
+            sem.executeActivity(obj.DcrExecution("e_8"), self.graph)
         # Make act7 not pending to remove constraint:
-        sem.executeEvent(obj.DcrEvent("e_7"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_7"), self.graph)
         # Act8 is now enabled:
-        sem.executeEvent(obj.DcrEvent("e_8"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_8"), self.graph)
         self.assertIsNotNone(self.graph.getElementFromID("act8").executed)
     
     def test_input(self):
         # Activity has no data:
         self.assertIsNone(self.graph.getElementFromID("act3").data)
         # Execution with input:
-        sem.executeEvent(obj.DcrEvent("e_3", 1), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3", 1), self.graph)
         # Activity has taken input as data:
         self.assertEqual(self.graph.getElementFromID("act3").data, 1)
     
@@ -229,9 +229,9 @@ class TestStandardDcr(unittest.TestCase):
         # act2 has no data:
         self.assertIsNone(self.graph.getElementFromID("act2").data)
         # Execution of act3 with input:
-        sem.executeEvent(obj.DcrEvent("e_3", 1), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3", 1), self.graph)
         # Execution of act2 with computation:
-        sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_2"), self.graph)
         # Activity has taken input as data:
         self.assertEqual(self.graph.getElementFromID("act2").data, 2)
     
@@ -240,47 +240,47 @@ class TestStandardDcr(unittest.TestCase):
         self.assertIsNone(self.graph.getElementFromID("act4Spawn1"))
         self.assertIsNone(self.graph.getElementFromID("act5Spawn1"))
         # Execution with data too low to pass guard:
-        sem.executeEvent(obj.DcrEvent("e_3", 0), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3", 0), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_2"), self.graph)
         # Spawned activities still not instantiated:
         self.assertIsNone(self.graph.getElementFromID("act4Spawn1"))
         self.assertIsNone(self.graph.getElementFromID("act5Spawn1"))
         # Execution with data high enough to pass guard:
-        sem.executeEvent(obj.DcrEvent("e_6"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_3", 2), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_6"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3", 2), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_2"), self.graph)
         # Activities have now been spawned:
         self.assertIsNotNone(self.graph.getElementFromID("act4Spawn1"))
         self.assertIsNotNone(self.graph.getElementFromID("act5Spawn1"))
     
     def test_constraint_with_guard(self):
-        sem.executeEvent(obj.DcrEvent("e_3", 2), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3", 2), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_2"), self.graph)
         # Execution before added data does not pass guard and condition is ignored:
-        sem.executeEvent(obj.DcrEvent("e_act5Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act5Spawn1", True), self.graph)
         # Activity was executed:
         self.assertIsNotNone(self.graph.getElementFromID("act5Spawn1").executed)
         # Data is now set as True:
         self.assertTrue(self.graph.getElementFromID("act5Spawn1").data)
         # Execution once data=True does not pass guard and execution is denied:
         with self.assertRaisesRegex(Exception, "Activity with ID .* is not enabled and cannot be executed"):
-            sem.executeEvent(obj.DcrEvent("e_act5Spawn1", True), self.graph)
+            sem.executeActivity(obj.DcrExecution("e_act5Spawn1", True), self.graph)
             
     def test_graph_accepting(self):
         # Graph is initially not accepting:
         self.assertFalse(self.graph.isAccepting())
         # Execute pending activity:
-        sem.executeEvent(obj.DcrEvent("e_7"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_7"), self.graph)
         # Graph is now accepting:
         self.assertTrue(self.graph.isAccepting())
         # Make act2 pending:
-        sem.executeEvent(obj.DcrEvent("e_6"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_3"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_6"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_3"), self.graph)
         # Graph is still accepting since subprocess parent of act2 is not pending:
         self.assertTrue(self.graph.isAccepting())
         # Make subP1 also pending:
-        sem.executeEvent(obj.DcrEvent("e_8"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_8"), self.graph)
         # Graph is no longer accepting:
         self.assertFalse(self.graph.isAccepting())
 
@@ -323,98 +323,98 @@ class TestOne2ManyAndMany2Many(unittest.TestCase):
     
     def test_outsideSub_o2m_insideSub(self):
         # Spawn 2 versions of act3:
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
         # Neither is pending:
         self.assertFalse(self.graph.getElementFromID("act3Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act3Spawn2").pending)
         # Execute response effect on all acts3 with data=True:
-        sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_2"), self.graph)
         # Still not pending as neither had data:
         self.assertFalse(self.graph.getElementFromID("act3Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act3Spawn2").pending)
         # Setting act3Spawn1.data to True and executing again:
-        sem.executeEvent(obj.DcrEvent("e_act3Spawn1", True), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act3Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_2"), self.graph)
         # act3Spawn1 is now pending, act3spawn2 still did not pass the guard:
         self.assertTrue(self.graph.getElementFromID("act3Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act3Spawn2").pending)
         # setting both to not pending with 1.data=False and 2.data=True and executing again:
-        sem.executeEvent(obj.DcrEvent("e_act3Spawn1", False), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act3Spawn2", True), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act3Spawn1", False), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act3Spawn2", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_2"), self.graph)
         # act3Spawn1 is now unaffected while act3Spawn2 passes the guard and is pending:
         self.assertFalse(self.graph.getElementFromID("act3Spawn1").pending)
         self.assertTrue(self.graph.getElementFromID("act3Spawn2").pending)
         # Both not pending and both with data=True:
-        sem.executeEvent(obj.DcrEvent("e_act3Spawn1", True), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act3Spawn2", True), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act3Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act3Spawn2", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_2"), self.graph)
         # Both are affected:
         self.assertTrue(self.graph.getElementFromID("act3Spawn1").pending)
         self.assertTrue(self.graph.getElementFromID("act3Spawn2").pending)
     
     def test_insideSub_m2o_outsideSub(self):
         # Spawn 2 versions of act3:
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
         # Execute response effect from act3 with data=False:
-        sem.executeEvent(obj.DcrEvent("e_act3Spawn1", False), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act3Spawn1", False), self.graph)
         # act2 was not affected:
         self.assertFalse(self.graph.getElementFromID("act2").pending)
         # Execute from other act3 with data=True:
-        sem.executeEvent(obj.DcrEvent("e_act3Spawn2", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act3Spawn2", True), self.graph)
         # act2 was affected:
         self.assertTrue(self.graph.getElementFromID("act2").pending)
     
     def test_sub1_m2m_sub1(self):
         # Spawn 2 versions of act3 and act4:
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
         # No acts4 are pending:
         self.assertFalse(self.graph.getElementFromID("act4Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act4Spawn2").pending)
         # Response relation has guard requiring True data from both source and target
         # Execute from act3 with data=True:
-        sem.executeEvent(obj.DcrEvent("e_act3Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act3Spawn1", True), self.graph)
         # Neither act4 is affected, as both have no data:
         self.assertFalse(self.graph.getElementFromID("act4Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act4Spawn2").pending)
         # Setting ac4Spawn2.data=True:
-        sem.executeEvent(obj.DcrEvent("e_act4Spawn2", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act4Spawn2", True), self.graph)
         # Execute response effect from act3 with data=False:
-        sem.executeEvent(obj.DcrEvent("e_act3Spawn2", False), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act3Spawn2", False), self.graph)
         # Still no result as source had data=False:
         self.assertFalse(self.graph.getElementFromID("act4Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act4Spawn2").pending)
         # Executing with source.data=True:
-        sem.executeEvent(obj.DcrEvent("e_act3Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act3Spawn1"), self.graph)
         # Only act4 with data=True was affected, despite source and target being in different spawns:
         self.assertFalse(self.graph.getElementFromID("act4Spawn1").pending)
         self.assertTrue(self.graph.getElementFromID("act4Spawn2").pending)
     
     def test_sub1_m2m_sub2(self):
         # Spawn 2 versions of act3 and act5:
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
         # No acts5 are pending:
         self.assertFalse(self.graph.getElementFromID("act5Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act5Spawn2").pending)
         # Response relation has guard requiring True data from both source and target
         # Execute from act3 with data=True:
-        sem.executeEvent(obj.DcrEvent("e_act3Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act3Spawn1", True), self.graph)
         # Neither act5 is affected, as both have no data:
         self.assertFalse(self.graph.getElementFromID("act5Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act5Spawn2").pending)
         # Setting ac5Spawn1.data=True:
-        sem.executeEvent(obj.DcrEvent("e_act5Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act5Spawn1", True), self.graph)
         # Execute response effect from act3 with data=False:
-        sem.executeEvent(obj.DcrEvent("e_act3Spawn2", False), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act3Spawn2", False), self.graph)
         # Still no result as source had data=False:
         self.assertFalse(self.graph.getElementFromID("act5Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act5Spawn2").pending)
         # Executing with source.data=True:
-        sem.executeEvent(obj.DcrEvent("e_act3Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act3Spawn1"), self.graph)
         # Only act5 with data=True was affected:
         self.assertTrue(self.graph.getElementFromID("act5Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act5Spawn2").pending)
@@ -424,46 +424,46 @@ class TestOne2ManyAndMany2Many(unittest.TestCase):
 
     def test_subOuter_o2m_subInner(self):
         # Spawn 2 versions of act5 and subG2 and, for each of the latter, spawn 2 versions of act8 for a total of 4:
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act7Spawn1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act7Spawn1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act7Spawn2"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act7Spawn2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act7Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act7Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act7Spawn2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act7Spawn2"), self.graph)
         # No acts8 are pending:
         self.assertFalse(self.graph.getElementFromID("act8Spawn1Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn1Spawn2").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn2").pending)
         # Execute response effect on all acts8 with data=True which are spawned from the same instance as the act5:
-        sem.executeEvent(obj.DcrEvent("e_act5Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act5Spawn1", True), self.graph)
         # Still not pending as none had data:
         self.assertFalse(self.graph.getElementFromID("act8Spawn1Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn1Spawn2").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn2").pending)
         # Setting act8Spawn1Spawn1.data and act8Spawn2Spawn1.data to True and executing again:
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn1", True), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn2Spawn1", True), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act5Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn1Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn2Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act5Spawn1"), self.graph)
         # act8Spawn1Spawn1 is now pending but act8Spawn1Spawn2 did not pass the guard. act8Spawn2Spawn1 had positive data but was in other spawn tree:
         self.assertTrue(self.graph.getElementFromID("act8Spawn1Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn1Spawn2").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn2").pending)
         # Setting all to not pending with both acts8 in Spawn1 having data=True:
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn1", True), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn2", True), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act5Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn1Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn1Spawn2", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act5Spawn1"), self.graph)
         # Both are affected, but acts8 in Spawn2 still are not, keeping this a one2many relation:
         self.assertTrue(self.graph.getElementFromID("act8Spawn1Spawn1").pending)
         self.assertTrue(self.graph.getElementFromID("act8Spawn1Spawn2").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn2").pending)
         # Resetting pendings and executing with source failing guard also results in no effect:
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn2"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act5Spawn1", False), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn1Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn1Spawn2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act5Spawn1", False), self.graph)
         self.assertFalse(self.graph.getElementFromID("act8Spawn1Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn1Spawn2").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn1").pending)
@@ -471,80 +471,80 @@ class TestOne2ManyAndMany2Many(unittest.TestCase):
 
     def test_subInner_m2o_subOuter(self):
         # Spawn 2 versions of act5 and subG2 and, for each of the latter, spawn 2 versions of act8 for a total of 4:
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act7Spawn1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act7Spawn1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act7Spawn2"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act7Spawn2"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act5Spawn1", True), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act5Spawn2", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act7Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act7Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act7Spawn2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act7Spawn2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act5Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act5Spawn2", True), self.graph)
         # Neither act5 is pending:
         self.assertFalse(self.graph.getElementFromID("act5Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act5Spawn2").pending)
         # Execute response effect from act8 in Spawn1 with data=False:
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn1", False), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn1Spawn1", False), self.graph)
         # acts5 were not affected:
         self.assertFalse(self.graph.getElementFromID("act5Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act5Spawn2").pending)
         # Execute from other act8 in Spawn1 with data=True:
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn2", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn1Spawn2", True), self.graph)
         # act5Spawn1 was affected but act5Spawn2 was not, as this is a one2many relation in Spawn1:
         self.assertTrue(self.graph.getElementFromID("act5Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act5Spawn2").pending)
         # Resetting pending and executing with target failing guard also results in no effect:
-        sem.executeEvent(obj.DcrEvent("e_act5Spawn1", False), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act5Spawn1", False), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn1Spawn1", True), self.graph)
         self.assertFalse(self.graph.getElementFromID("act5Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act5Spawn2").pending)
 
     
     def test_subOuter_m2m_subInner(self):
         # Spawn 2 versions of act6 and subG2 and, for each of the latter, spawn 2 versions of act8 for a total of 4:
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act7Spawn1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act7Spawn1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act7Spawn2"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act7Spawn2"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act5Spawn1", True), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act5Spawn2", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act7Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act7Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act7Spawn2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act7Spawn2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act5Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act5Spawn2", True), self.graph)
         # No acts8 are pending:
         self.assertFalse(self.graph.getElementFromID("act8Spawn1Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn1Spawn2").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn2").pending)
         # Execute response effect on all acts8 with data=True:
-        sem.executeEvent(obj.DcrEvent("e_act6Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act6Spawn1", True), self.graph)
         # Still not pending as none had data:
         self.assertFalse(self.graph.getElementFromID("act8Spawn1Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn1Spawn2").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn2").pending)
         # Setting act8Spawn1Spawn1.data and act8Spawn2Spawn1.data to True and executing again:
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn1", True), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn2Spawn1", True), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act6Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn1Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn2Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act6Spawn1"), self.graph)
         # Both are now pending but not the two others, which did not pass the guard:
         self.assertTrue(self.graph.getElementFromID("act8Spawn1Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn1Spawn2").pending)
         self.assertTrue(self.graph.getElementFromID("act8Spawn2Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn2").pending)
         # Setting all to not pending with both acts8 in Spawn1 having data=True:
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn1", True), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn2", True), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn2Spawn1", True), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act6Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn1Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn1Spawn2", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn2Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act6Spawn1"), self.graph)
         # Both acts8 in Spawn1 are affected, but still only the one with data=True in Spawn2:
         self.assertTrue(self.graph.getElementFromID("act8Spawn1Spawn1").pending)
         self.assertTrue(self.graph.getElementFromID("act8Spawn1Spawn2").pending)
         self.assertTrue(self.graph.getElementFromID("act8Spawn2Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn2").pending)
         # Resetting pendings and executing with source failing guard also results in no effect:
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn2"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn2Spawn1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act6Spawn1", False), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn1Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn1Spawn2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn2Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act6Spawn1", False), self.graph)
         self.assertFalse(self.graph.getElementFromID("act8Spawn1Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn1Spawn2").pending)
         self.assertFalse(self.graph.getElementFromID("act8Spawn2Spawn1").pending)
@@ -552,31 +552,31 @@ class TestOne2ManyAndMany2Many(unittest.TestCase):
 
     def test_subInner_m2m_subOuter(self):
         # Spawn 2 versions of act6 and subG2 and, for each of the latter, spawn 2 versions of act8 for a total of 4:
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act7Spawn1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act7Spawn1"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act7Spawn2"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act7Spawn2"), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act6Spawn1", True), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act6Spawn2", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act7Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act7Spawn1"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act7Spawn2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act7Spawn2"), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act6Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act6Spawn2", True), self.graph)
         # Neither act6 is pending:
         self.assertFalse(self.graph.getElementFromID("act6Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act6Spawn2").pending)
         # Execute response effect from act8 in Spawn1 with data=False:
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn1", False), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn1Spawn1", False), self.graph)
         # acts6 were not affected:
         self.assertFalse(self.graph.getElementFromID("act6Spawn1").pending)
         self.assertFalse(self.graph.getElementFromID("act6Spawn2").pending)
         # Execute from other act8 in Spawn1 with data=True:
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn1Spawn2", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn1Spawn2", True), self.graph)
         # Both acts6 were affected across spawns:
         self.assertTrue(self.graph.getElementFromID("act6Spawn1").pending)
         self.assertTrue(self.graph.getElementFromID("act6Spawn2").pending)
         # Resetting pending and executing with one target failing guard affects only the target with data=True:
-        sem.executeEvent(obj.DcrEvent("e_act6Spawn1", False), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act6Spawn2", True), self.graph)
-        sem.executeEvent(obj.DcrEvent("e_act8Spawn2Spawn1", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act6Spawn1", False), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act6Spawn2", True), self.graph)
+        sem.executeActivity(obj.DcrExecution("e_act8Spawn2Spawn1", True), self.graph)
         self.assertFalse(self.graph.getElementFromID("act6Spawn1").pending)
         self.assertTrue(self.graph.getElementFromID("act6Spawn2").pending)
 
