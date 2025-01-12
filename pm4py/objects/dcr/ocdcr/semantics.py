@@ -116,7 +116,7 @@ class DcrSemantics:
                 elif expression == "inInstance":
                     return ".startswith"
                 else:
-                    for word in expression.split():
+                    for word in re.split(" |(|)|.", expression):
                         if iskeyword(word):
                             return None
                     return expression
@@ -131,8 +131,7 @@ class DcrSemantics:
         for i, expression in enumerate(computation):
             computation[i] = cls.parseExpression(expression)
         executable = " ".join(computation)
-        res = eval(executable)
-        return res
+        return eval(executable)
 
     @classmethod
     def executeEvent(cls, event: DcrEvent, graph: DcrGraph):
@@ -295,7 +294,6 @@ class DcrSemantics:
 
     @classmethod
     def spawnSubContainers(cls, container: DcrSpawnContainer, spawned: Set[DcrElement], graph: DcrGraph):
-        newChild = None
         for child in container.children:
             if child in spawned:
                 newChild = child
