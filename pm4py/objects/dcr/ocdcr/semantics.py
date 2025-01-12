@@ -123,7 +123,7 @@ class DcrSemantics:
 
     @classmethod
     def executeActivity(cls, execution: DcrExecution, graph: DcrGraph):
-        activity = graph.getActivity(execution.ID)
+        activity = graph.getActivity(execution.activityID)
         if cls.isEnabled(activity, graph):
             if execution.time is None:
                 execution.time = datetime.now()
@@ -257,9 +257,9 @@ class DcrSemantics:
             elif type(element) is DcrSubprocess:
                 spawns[element] = DcrSubprocess("{}Spawn{}".format(element.ID, spawnNumber), template=element)
             else:
-                spawns[element] = DcrActivity("{}Spawn{}".format(element.ID, spawnNumber), template=element)
-                eventID = "e_{}Spawn{}".format(element.ID, spawnNumber)
-                graph.activityMap[eventID] = spawns[element]
+                activityID = "{}Spawn{}".format(element.ID, spawnNumber)
+                spawns[element] = DcrActivity(activityID, template=element)
+                graph.activityMap[activityID] = spawns[element]
 
         return spawns
     
