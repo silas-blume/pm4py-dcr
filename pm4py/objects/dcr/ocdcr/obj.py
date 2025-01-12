@@ -15,12 +15,12 @@ class RelationType(IntEnum):
     C = auto() # condition
     M = auto() # milestone
 
-class DcrEvent:
+class DcrExecution:
     
     def __init__(self, id, input=None, time=None):
         self.__id = id
         self.__input = input
-        self.__executionTime = time
+        self.__time = time
 
 
     @property
@@ -32,12 +32,12 @@ class DcrEvent:
         return self.__input
     
     @property
-    def executionTime(self) -> datetime:
-        return self.__executionTime
+    def time(self) -> datetime:
+        return self.__time
     
-    @executionTime.setter
-    def executionTime(self, value: datetime):
-        self.__executionTime = value
+    @time.setter
+    def time(self, value: datetime):
+        self.__time = value
     
 
 type DcrExpression = str | int | float | tuple[str, str]
@@ -96,14 +96,23 @@ class DcrElement(ABC):
 
 class DcrActivity(DcrElement):
     
-    def __init__(self, id, included=True, pending=False, computation: DcrComputation=None, takesInput=False, template=None, **kwargs):
+    def __init__(self, id, label=None, included=True, pending=False, computation: DcrComputation=None, takesInput=False, template=None, **kwargs):
         super().__init__(id, template=template, **kwargs)
+        self.__label = id if label is None else label
         self.__included = included if template is None else template.included
         self.__pending = pending if template is None else template.pending
         self.__executed = None # set as None or a datetime denoting execution time. Not currently used but for compatability with timed graphs.
         self.__computation = computation if template is None else template.computation
         self.__takesInput = takesInput if template is None else template.takesInput
         self.__data = None
+
+    @property
+    def label(self) -> str:
+        return self.__label
+    
+    @label.setter
+    def label(self, value: str):
+        self.__label = value
 
     @property
     def included(self) -> bool:
@@ -329,11 +338,12 @@ class DcrConstraint(DcrRelation):
 
 class DcrGraph:
     
-    def __init__(self, id, events=[], elements=set(), activityMap={}, relations=set(), template=None):
+    def __init__(self, id, executions=[], elements=set(), activityMap={}, relations=set(), template=None):
         self.__id = id
-        self.__events = events if template is None else template.events
+        self.__executions = executions if template is None else template.executions
         self.__elements = elements if template is None else template.elements
-        self.__activityMap = activityMap if template is None else template.labelMapping
+        self.__activityMap = activityMap if template is None else template.activityMap
+        self.__labelMap = {}
         self.__relations = relations if template is None else template.relations
 
         self.initialiseGraph()
@@ -347,12 +357,12 @@ class DcrGraph:
         self.__id = value
 
     @property
-    def events(self) -> list[DcrEvent]:
-        return self.__events
+    def executions(self) -> list[DcrExecution]:
+        return self.__executions
 
-    @events.setter
-    def events(self, value: list[DcrEvent]):
-        self.__events = value
+    @executions.setter
+    def executions(self, value: list[DcrExecution]):
+        self.__executions = value
 
     @property
     def elements(self) -> Set[DcrElement]:
@@ -369,6 +379,14 @@ class DcrGraph:
     @activityMap.setter
     def activityMap(self, value: Dict[str, DcrActivity]):
         self.__activityMap = value
+
+    @property
+    def labelMap(self) -> Dict[str, Set[DcrActivity]]:
+        return self.__labelMap
+    
+    @labelMap.setter
+    def labelMap(self, value: Dict[str, Set[DcrActivity]]):
+        self.__labelMap = value
 
     @property
     def relations(self) -> Set[DcrRelation]:
@@ -460,7 +478,12 @@ class DcrGraph:
 
     def initialiseGraph(self):
         spawnContainers = set()
+        elementIDs = set()
         for element in self.elements:
+            if element.ID in elementIDs:
+                raise Exception("More than one element with ID {} in graph".format(element.ID))
+            else: elementIDs.add(element.ID)
+
             if len(self.getSubprocessParents(element)) > 1:
                 raise Exception("Element with ID {} is part of more than one subprocesses".format(element.ID))
 
@@ -475,30 +498,44 @@ class DcrGraph:
                     containers.update(self.initiateSpawnContainers(child, element))
                 element.children = containers
                 spawnContainers.update(containers)
+
             if isinstance(element, DcrActivity):
+                if element.label in self.labelMap:
+                    self.labelMap[element.label].add(element)
+                else:
+                    self.labelMap[element.label] = {element}
                 if not element.effectiveIncluded:
                     self.updateIncluded(element)
                 if element.effectivePending:
                     self.updatePending(element)
+
         self.elements.update(spawnContainers)
         for relation in self.relations:
             if isinstance(relation, DcrSpawn) and not isinstance(relation.target, DcrSubgraph):
                 raise Exception("Non-subgraph element with ID {} is the target of a spawn relation".format(relation.target.ID))
             
 
-    def getEventID(self, activity: DcrActivity) -> str:
-        for eventID, dcrActivity in self.activityMap.items():
+    def getExecutionID(self, activity: DcrActivity) -> str:
+        for executionID, dcrActivity in self.activityMap.items():
             if activity == dcrActivity:
-                return eventID
+                return executionID
 
-    def getActivity(self, eventID: str) -> DcrActivity:
-        return self.activityMap[eventID]
+    def getActivity(self, executionID: str) -> DcrActivity:
+        return self.activityMap[executionID]
     
     def getElementFromID(self, ID: str) -> DcrElement:
         for e in self.elements:
             if e.ID == ID:
                 return e
         return None
+    
+    def getLabel(self, element: DcrActivity) -> str:
+        for label, elements in self.labelMap.items():
+            if element in elements:
+                return label
+            
+    def getElementsFromLabel(self, label: str) -> Set[DcrActivity]:
+        return self.labelMap[label]
 
     def getConstraints(self) -> int:
         return len(self.__relations)
