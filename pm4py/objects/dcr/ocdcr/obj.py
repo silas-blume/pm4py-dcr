@@ -17,15 +17,15 @@ class RelationType(IntEnum):
 
 class DcrExecution:
     
-    def __init__(self, id, input=None, time=None):
-        self.__id = id
+    def __init__(self, activityID, input=None, time=None):
+        self.__activityID = activityID
         self.__input = input
         self.__time = time
 
 
     @property
     def activityID(self) -> str:
-        return self.__id
+        return self.__activityID
     
     @property
     def input(self) -> any:
