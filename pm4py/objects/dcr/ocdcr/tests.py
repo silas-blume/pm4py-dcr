@@ -283,7 +283,7 @@ class TestStandardDcr(unittest.TestCase):
         self.assertFalse(self.graph.isAccepting())
 
 
-class TestOne2ManyAndMany2Many(unittest.TestCase):
+class TestRelationCardinalityAndGuards(unittest.TestCase):
     graph = None
 
     def setUp(self):
