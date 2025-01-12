@@ -340,11 +340,11 @@ class DcrGraph:
     
     def __init__(self, id, executions=[], elements=set(), relations=set(), template=None):
         self.__id = id
-        self.__executions = executions if template is None else template.executions
         self.__elements = elements if template is None else template.elements
+        self.__relations = relations if template is None else template.relations
+        self.__executions = executions if template is None else template.executions
         self.__activityMap = {}
         self.__labelMap = {}
-        self.__relations = relations if template is None else template.relations
 
         self.initialiseGraph()
 
@@ -357,20 +357,28 @@ class DcrGraph:
         self.__id = value
 
     @property
-    def executions(self) -> list[DcrExecution]:
-        return self.__executions
-
-    @executions.setter
-    def executions(self, value: list[DcrExecution]):
-        self.__executions = value
-
-    @property
     def elements(self) -> Set[DcrElement]:
         return self.__elements
 
     @elements.setter
     def elements(self, value: Set[DcrElement]):
         self.__elements = value
+
+    @property
+    def relations(self) -> Set[DcrRelation]:
+        return self.__relations
+    
+    @relations.setter
+    def relations(self, value: Set[DcrRelation]):
+        self.__relations = value
+
+    @property
+    def executions(self) -> list[DcrExecution]:
+        return self.__executions
+
+    @executions.setter
+    def executions(self, value: list[DcrExecution]):
+        self.__executions = value
 
     @property
     def activityMap(self) -> Dict[str, DcrActivity]:
@@ -387,14 +395,6 @@ class DcrGraph:
     @labelMap.setter
     def labelMap(self, value: Dict[str, Set[DcrActivity]]):
         self.__labelMap = value
-
-    @property
-    def relations(self) -> Set[DcrRelation]:
-        return self.__relations
-    
-    @relations.setter
-    def relations(self, value: Set[DcrRelation]):
-        self.__relations = value
 
 
 
