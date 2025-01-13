@@ -1,26 +1,23 @@
-## A dcr implementation in pm4py
+## A DCR Graphs implementation in pm4py
 
 Tested and working with python 3.11.0
 
-Create a python virtual environment and: 
+Create a Python virtual environment and: 
 ```
 pip install -r requirements.txt
 ```
+Do you want to see how declarative process models are supported in process mining tasks? then you should run our tutorial at [notebooks/pm4py_dcr_example.ipynb](https://github.com/paul-cvp/pm4py-dcr/notebooks/pm4py_dcr_example.ipynb)
 
-Check out and run the jupyter notebook from notebooks/pm4py_dcr_example.ipynb
 
+### Contributors on the DCR extension
 
-The running example is on the sepsis event log.
-
-### Contributors on the dcr extension
-
-[paul-cvp](https://github.com/paul-cvp),[Timmovich](https://github.com/Timmovich)
+[Jonas Lykke Kjeldsen](https://github.com/Scones111), [Simon Hermansen](https://github.com/simonhermansen), [ragnarLaki](https://github.com/RagnarLaki),[paul-cvp](https://github.com/paul-cvp),[Timmovich](https://github.com/Timmovich)
 
 ## From pm4py:
 
 # pm4py
-pm4py is a python library that supports (state-of-the-art) process mining algorithms in python. 
-It is open source (licensed under GPL) and intended to be used in both academia and industry projects.
+pm4py is a Python library that supports (state-of-the-art) process mining algorithms in Python. 
+It is open source (licensed under GPL) and intended to be used in academia and industry projects.
 pm4py is a product of the Fraunhofer Institute for Applied Information Technology.
 
 ## Documentation / API
@@ -52,7 +49,7 @@ pm4py depends on some other Python packages, with different levels of importance
 * *Optional requirements* (not installed by default): scikit-learn, pyemd, pyvis, jsonschema, polars, openai, pywin32, python-dateutil, requests, workalendar
 
 ## Release Notes
-To track the incremental updates, please refer to the *CHANGELOG* file.
+Please refer to the *CHANGELOG* file to track the incremental updates.
 
 ## Third Party Dependencies
 As scientific library in the Python ecosystem, we rely on external libraries to offer our features.
