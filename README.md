@@ -1,6 +1,6 @@
 ## A DCR Graphs implementation in pm4py
 
-Tested and working with python 3.11.0
+Tested and working with Python 3.11.0
 
 Create a Python virtual environment and: 
 ```
@@ -8,20 +8,19 @@ pip install -r requirements.txt
 ```
 Do you want to see how declarative process models are supported in process mining tasks? then you should run our tutorial at [notebooks/pm4py_dcr_example.ipynb](https://github.com/paul-cvp/pm4py-dcr/notebooks/pm4py_dcr_example.ipynb)
 
+DCR4Py is a fork of the popular pm4py library for process mining. You can find more information about it [here](https://pm4py.fit.fraunhofer.de). DCR4Py is open source under GPL license and it is intended to be used in academia and industry projects. 
 
 ### Contributors on the DCR extension
 
 [Jonas Lykke Kjeldsen](https://github.com/Scones111), [Simon Hermansen](https://github.com/simonhermansen), [ragnarLaki](https://github.com/RagnarLaki),[paul-cvp](https://github.com/paul-cvp),[Timmovich](https://github.com/Timmovich)
 
+## Citing DCR4Py
+If you are using DCR4Py in your scientific work, please cite our work as follows:
+
+Hermansen, Simon VH, Ragnar Jónsson, Jonas L. Kjeldsen, Tijs Slaats, Vlad Paul Cosma, and Hugo A. López. "DCR4Py: A PM4Py Library Extension for Declarative Process Mining in Python." In 6th International Conference on Process Mining. CEUR-WS, 2024. https://ceur-ws.org/Vol-3783/paper_353.pdf
+
 ## From pm4py:
 
-# pm4py
-pm4py is a Python library that supports (state-of-the-art) process mining algorithms in Python. 
-It is open source (licensed under GPL) and intended to be used in academia and industry projects.
-pm4py is a product of the Fraunhofer Institute for Applied Information Technology.
-
-## Documentation / API
-The full documentation of pm4py can be found at https://pm4py.fit.fraunhofer.de
 
 ## First Example
 A very simple example, to whet your appetite:
@@ -56,7 +55,3 @@ As scientific library in the Python ecosystem, we rely on external libraries to 
 In the */third_party* folder, we list all the licenses of our direct dependencies.
 Please check the */third_party/LICENSES_TRANSITIVE* file to get a full list of all transitive dependencies and the corresponding license.
 
-## Citing pm4py
-If you are using pm4py in your scientific work, please cite pm4py as follows:
-
-Berti, A., van Zelst, S.J., van der Aalst, W.M.P. (2019): Process Mining for Python (PM4Py): Bridging the Gap Between Process-and Data Science. In: Proceedings of the ICPM Demo Track 2019, co-located with 1st International Conference on Process Mining (ICPM 2019), Aachen, Germany, June 24-26, 2019. pp. 13-16 (2019). http://ceur-ws.org/Vol-2374/
