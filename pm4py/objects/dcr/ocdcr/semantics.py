@@ -90,7 +90,7 @@ class DcrSemantics:
     
     @classmethod
     def parseExpression(cls, expression: DcrExpression):
-        operators = ["+", "-", "*", "/", "==", "<", ">", "<=", ">=", "and", "or", "not", "is", "in", "(", ")", "len"]
+        operators = ["+", "-", "*", "/", "==", "<", ">", "<=", ">=", "and", "or", "not", "is", "in", "for", "(", ")", "[", "]", "len"]
         match expression:
             case (e1, e2):
                 if e1 in ["source", "target"]:
