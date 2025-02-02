@@ -499,6 +499,7 @@ class DcrGraph:
                 element.children = containers
                 spawnContainers.update(containers)
 
+        for element in self.elements:
             if isinstance(element, DcrActivity):
                 if type(element) is DcrActivity:
                     self.activityMap[element.ID] = element
