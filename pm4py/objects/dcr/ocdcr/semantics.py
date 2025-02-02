@@ -40,6 +40,8 @@ class DcrSemantics:
     
     @classmethod
     def isEnabled(cls, element: DcrActivity | DcrSubprocess, graph: DcrGraph) -> bool:
+        if not isinstance(element, DcrActivity):
+            return False
         if not element.effectiveIncluded:
             return False
         if isinstance(element, DcrSubprocess) and element.childrenPending:
@@ -118,7 +120,11 @@ class DcrSemantics:
         for i, expression in enumerate(computation):
             computation[i] = cls.parseExpression(expression)
         executable = " ".join(computation)
-        return eval(executable)
+        try:
+            res = eval(executable)
+        except:
+            res = None
+        return res
 
     @classmethod
     def executeActivity(cls, execution: DcrExecution, graph: DcrGraph):
@@ -155,7 +161,7 @@ class DcrSemantics:
                 sub = True
                 if cls.isEnabled(parent, graph):
                     cls.execute(parent, graph)
-            elif isinstance(parent, DcrNesting):
+            elif isinstance(parent, DcrNesting | DcrSubgraph):
                 sub = cls.executeSubprocessParent(parent, graph)
             if sub:
                 break
@@ -165,14 +171,11 @@ class DcrSemantics:
     def relateToTarget(cls, source: DcrElement, target: DcrElement, effect: DcrEffect, graph: DcrGraph):
         if target.isTemplate:
             return
-        if isinstance(target, DcrNesting):
-            for child in target.children:
-                cls.relateToTarget(source, child, effect, graph)
-        elif isinstance(effect, DcrSpawn):
+        if isinstance(effect, DcrSpawn):
             if effect.guard is None or cls.evaluateComputation(effect.guard, graph, source, target):
                 effect.spawned += 1
                 cls.spawn(target, graph, effect.spawned)
-        elif isinstance(target, DcrNesting):
+        elif isinstance(target, DcrNesting | DcrSubgraph):
             for child in target.children:
                 cls.relateToTarget(source, child, effect, graph)
         else:
