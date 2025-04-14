@@ -45,8 +45,22 @@ pip install pydata-sphinx-theme
 ## DCR4Py contributors
 
 [paul-cvp](https://github.com/paul-cvp),[Timmovich](https://github.com/Timmovich), [Scones111](https://github.com/Scones111), [RagnarLaki](https://github.com/RagnarLaki), 
-[simonhermansen](https://github.com/simonhermansen), [Axel](https://github.com/Axel0087), [Tijs](https://github.com/tslaats)
+[simonhermansen](https://github.com/simonhermansen), [Axel](https://github.com/Axel0087), [Tijs](https://github.com/tslaats), [Hugo A. López](https://github.com/hugoalopez-dtu)
 
+
+## Cite DCR4Py
+If you are using DCR4Py for academic work, please use the following reference:
+**Hermansen, S. V., Jónsson, R., Kjeldsen, J. L., Slaats, T., Cosma, V. P., & López, H. A.** (2024). DCR4Py: A PM4Py Library Extension for Declarative Process Mining in Python. In 6th International Conference on Process Mining. CEUR-WS. [Article link](https://ceur-ws.org/Vol-3783/paper_353.pdf)
+
+```bibtex
+@inproceedings{hermansen2024dcr4py,
+  title={DCR4Py: A PM4Py Library Extension for Declarative Process Mining in Python},
+  author={Hermansen, Simon VH and J{\'o}nsson, Ragnar and Kjeldsen, Jonas L and Slaats, Tijs and Cosma, Vlad Paul and L{\'o}pez, Hugo A},
+  booktitle={6th International Conference on Process Mining},
+  year={2024},
+  organization={CEUR-WS}
+}
+```
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # pm4py (documentation from the source repo)
 pm4py is a python library that supports (state-of-the-art) process mining algorithms in python. 
