@@ -50,11 +50,43 @@ class DcrSemantics(object):
         """
         # can be extended to check for milestones
         res = set(graph.marking.included)
-        for e in set(graph.conditions.keys()).intersection(res):
-            if len(graph.conditions[e].intersection(graph.marking.included.difference(
+        for e in set(graph.conditioned.keys()).intersection(res):
+            if len(graph.conditioned[e].intersection(graph.marking.included.difference(
                     graph.marking.executed))) > 0:
                 res.discard(e)
+        for e in set(graph.milestoned.keys()).intersection(res):
+            if len(graph.milestoned[e].intersection(graph.marking.included.intersection(
+                    graph.marking.pending))) > 0:
+                res.discard(e)
         return res
+    
+    @classmethod
+    def get_sources(cls, graph: DcrGraph, sources: Set[str]):
+        extended_sources = sources
+        for source in sources:
+            if source in graph.nested:
+                extended_sources.update(graph.nested[source])
+        if sources != extended_sources:
+            return cls.get_sources(graph, extended_sources)
+        return extended_sources
+    
+    @classmethod
+    def apply_effect(cls, graph: DcrGraph, target, effect):
+        if target in graph.nestings:
+            for t_prime in graph.nestings[target]:
+                graph = cls.apply_effect(graph, t_prime, effect)
+        else:
+          match effect:
+              case 'e':
+                  graph.marking.included.discard(target)
+              case 'i':
+                  graph.marking.included.add(target)
+              case 'n':
+                  graph.marking.pending.discard(target)
+              case 'r':
+                  graph.marking.pending.add(target)
+              
+        return graph
 
     @classmethod
     def execute(cls, graph: DcrGraph, event):
@@ -73,24 +105,31 @@ class DcrSemantics(object):
         ---------
         :return: DCR graph with updated marking
         """
-        # each event is called for execution is called
         if event in graph.marking.pending:
             graph.marking.pending.discard(event)
         graph.marking.executed.add(event)
 
-        # the following if statements are used to provide to update DCR graph
-        # depending on prime event structure within conditions relations
-        if event in graph.excludes:
-            for e_prime in graph.excludes[event]:
-                graph.marking.included.discard(e_prime)
+        sources = cls.get_sources(graph, set(event))
 
-        if event in graph.includes:
-            for e_prime in graph.includes[event]:
-                graph.marking.included.add(e_prime)
+        for source in sources:
+            if source in graph.excludes:
+                for target in graph.excludes[source]:
+                    cls.apply_effect(graph, target, 'e')
 
-        if event in graph.responses:
-            for e_prime in graph.responses[event]:
-                graph.marking.pending.add(e_prime)
+        for source in sources:
+            if source in graph.includes:
+                for target in graph.includes[source]:
+                    cls.apply_effect(graph, target, 'i')
+
+        for source in sources:
+            if source in graph.noresponses:
+                for target in graph.noresponses[source]:
+                    cls.apply_effect(graph, target, 'n')
+
+        for source in sources:
+            if source in graph.responses:
+                for target in graph.responses[source]:
+                    cls.apply_effect(graph, target, 'r')
 
         return graph
 

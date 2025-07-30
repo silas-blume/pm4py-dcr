@@ -19,31 +19,37 @@ from typing import Set, Dict
 
 
 class Relations(Enum):
-    I = 'includes'
-    E = 'excludes'
-    R = 'responses'
-    N = 'noresponses'
-    C = 'conditions'
-    M = 'milestones'
+    I = 'include'
+    E = 'exclude'
+    R = 'response'
+    N = 'noresponse'
+    V = 'setValue'
+    S = 'spawn'
+    C = 'condition'
+    M = 'milestone'
 
 
 class TemplateRelations(Enum):
     I = 'includesTo'
     E = 'excludesTo'
-    R = 'responseTo'
-    N = 'noResponseTo'
-    C = 'conditionsFor'
-    M = 'milestonesFor'
+    R = 'responsesTo'
+    N = 'noresponsesTo'
+    V = 'setsValueTo'
+    S = 'spawns'
+    C = 'conditionedBy'
+    M = 'milestonedBy'
 
 
 dcr_template = {
     'events': set(),
-    'conditionsFor': {},
-    'milestonesFor': {},
-    'responseTo': {},
-    'noResponseTo': {},
+    'conditionedBy': {},
+    'milestonedBy': {},
+    'responsesTo': {},
+    'noresponsesTo': {},
     'includesTo': {},
     'excludesTo': {},
+    'setsValueTo': {},
+    'spawns': {},
     'marking': {'executed': set(),
                 'included': set(),
                 'pending': set(),
@@ -53,6 +59,7 @@ dcr_template = {
     'conditionsForDelays': {},
     'responseToDeadlines': {},
     'subprocesses': {},
+    'subprocessesMap': {},
     'nestedgroups': {},
     'nestedgroupsMap': {},
     'labels': set(),
@@ -214,11 +221,22 @@ class DcrGraph(object):
         self.__marking = Marking(set(), set(), set()) if template is None else (
             Marking(template['marking']['executed'], template['marking']['included'], template['marking']['pending']))
         self.__labels = set() if template is None else template['labels']
-        self.__conditionsFor = {} if template is None else template['conditionsFor']
-        self.__responseTo = {} if template is None else template['responseTo']
+        self.__conditionedBy = {} if template is None else template['conditionedBy']
+        self.__milestonedBy = {} if template is None else template['milestonedBy']
+        self.__responsesTo = {} if template is None else template['responsesTo']
+        self.__noresponsesTo = {} if template is None else template['noresponsesTo']
         self.__includesTo = {} if template is None else template['includesTo']
         self.__excludesTo = {} if template is None else template['excludesTo']
         self.__labelMap = {} if template is None else template['labelMapping']
+        self.__nestedgroups = {} if template is None else template['nestedgroups']
+        self.__nestedgroups_map = {} if template is None else template['nestedgroupsMap']
+        if len(self.__nestedgroups_map) == 0 and len(self.__nestedgroups) > 0:
+            self.__nestedgroups_map = {}
+            for group, events in self.__nestedgroups.items():
+                for e in events:
+                    if e not in self.__nestedgroups_map:
+                        self.__nestedgroups_map[e] = set()
+                    self.__nestedgroups_map[e].add(group)
 
     def obj_to_template(self):
         res = deepcopy(dcr_template)
@@ -227,11 +245,15 @@ class DcrGraph(object):
         res['marking']['included'] = self.__marking.included
         res['marking']['pending'] = self.__marking.pending
         res['labels'] = self.__labels
-        res['conditionsFor'] = self.__conditionsFor
-        res['responseTo'] = self.__responseTo
+        res['conditionedBy'] = self.__conditionedBy
+        res['milestonedBy'] = self.__milestonedBy
+        res['responsesTo'] = self.__responsesTo
+        res['noresponsesTo'] = self.__noresponsesTo
         res['includesTo'] = self.__includesTo
         res['excludesTo'] = self.__excludesTo
         res['labelMapping'] = self.__labelMap
+        res['nestedgroups'] = self.__nestedgroups
+        res['nestedgroupsMap'] = self.__nestedgroups_map
         return res
 
     # @property functions to extract values used for data manipulation and testing
@@ -260,19 +282,37 @@ class DcrGraph(object):
         self.__labels = value
 
     @property
-    def conditions(self) -> Dict[str, Set[str]]:
-        return self.__conditionsFor
+    def conditioned(self) -> Dict[str, Set[str]]:
+        return self.__conditionedBy
 
-    @conditions.setter
-    def conditions(self, value: Dict[str, Set[str]]):
-        self.__conditionsFor = value
+    @conditioned.setter
+    def conditioned(self, value: Dict[str, Set[str]]):
+        self.__conditionedBy = value
+
+    @property
+    def milestoned(self) -> Dict[str, Set[str]]:
+        return self.__milestonedBy
+
+    @milestoned.setter
+    def milestoned(self, value: Dict[str, Set[str]]):
+        self.__milestonedBy = value
+
     @property
     def responses(self) -> Dict[str, Set[str]]:
-        return self.__responseTo
+        return self.__responsesTo
 
     @responses.setter
     def responses(self, value: Dict[str, Set[str]]):
-        self.__responseTo = value
+        self.__responsesTo = value
+
+    @property
+    def noresponses(self) -> Dict[str, Set[str]]:
+        return self.__noresponsesTo
+    
+    @noresponses.setter
+    def noresponses(self, value: Dict[str, Set[str]]):
+        self.__noresponsesTo = value
+
     @property
     def includes(self) -> Dict[str, Set[str]]:
         return self.__includesTo
@@ -288,6 +328,7 @@ class DcrGraph(object):
     @excludes.setter
     def excludes(self, value: Dict[str, Set[str]]):
         self.__excludesTo = value
+
     @property
     # def label_map(self) -> Dict[str, Set[str]]:
     def label_map(self) -> Dict[str, str]:
@@ -297,6 +338,22 @@ class DcrGraph(object):
     # def label_map(self, value: Dict[str, Set[str]]):
     def label_map(self, value: Dict[str, str]):
         self.__labelMap = value
+
+    @property
+    def nestings(self) -> Dict[str, Set[str]]:
+        return self.__nestedgroups
+    
+    @nestings.setter
+    def nestings(self, value: Dict[str, Set[str]]):
+        self.__nestedgroups = value
+
+    @property
+    def nested(self) -> Dict[str, Set[str]]:
+        return self.__nestedgroups_map
+
+    @nested.setter
+    def nested(self, value: Dict[str, Set[str]]):
+        self.__nestedgroups_map = value
 
     def get_event(self, activity: str) -> str:
         """
@@ -336,7 +393,9 @@ class DcrGraph(object):
         """
         compute constraints in DCR Graph
             - conditions
+            - milestones
             - responses
+            - no_responses
             - includes
             - excludes
 
@@ -346,9 +405,13 @@ class DcrGraph(object):
             number of constraints
         """
         no = 0
-        for i in self.__conditionsFor.values():
+        for i in self.__conditionedBy.values():
             no += len(i)
-        for i in self.__responseTo.values():
+        for i in self.__milestonedBy.values():
+            no += len(i)
+        for i in self.__responsesTo.values():
+            no += len(i)
+        for i in self.__noResponsesTo.values():
             no += len(i)
         for i in self.__excludesTo.values():
             no += len(i)
@@ -366,7 +429,14 @@ class DcrGraph(object):
         return self.__repr__()
 
     def __eq__(self, other):
-        return self.conditions == other.conditions and self.responses == other.responses and self.includes == other.includes and self.excludes == other.excludes
+        return (
+            self.conditioned == other.conditioned
+            and self.milestoned == other.milestoned
+            and self.responses == other.responses
+            and self.no_responses == other.no_responses
+            and self.includes == other.includes
+            and self.excludes == other.excludes
+        )
 
     def __lt__(self, other):
         return str(self.obj) < str(other.obj)
