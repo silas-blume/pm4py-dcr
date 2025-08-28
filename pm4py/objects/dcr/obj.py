@@ -214,29 +214,32 @@ class DcrGraph(object):
     """
 
     # initiate the objects: contains events ID, activity, the 4 relations, markings, distributed and principals
-    def __init__(self, template=None):
+    def __init__(self, template=None, extensions=[]):
         # DisCoveR uses bijective labelling, each event has one label
-        #
+        self.extensions = extensions
         self.__events = set() if template is None else template['events']
         self.__marking = Marking(set(), set(), set()) if template is None else (
             Marking(template['marking']['executed'], template['marking']['included'], template['marking']['pending']))
         self.__labels = set() if template is None else template['labels']
+        self.__labelMap = {} if template is None else template['labelMapping']
         self.__conditionedBy = {} if template is None else template['conditionedBy']
         self.__milestonedBy = {} if template is None else template['milestonedBy']
         self.__responsesTo = {} if template is None else template['responsesTo']
         self.__noresponsesTo = {} if template is None else template['noresponsesTo']
         self.__includesTo = {} if template is None else template['includesTo']
         self.__excludesTo = {} if template is None else template['excludesTo']
-        self.__labelMap = {} if template is None else template['labelMapping']
         self.__nestedgroups = {} if template is None else template['nestedgroups']
-        self.__nestedgroups_map = {} if template is None else template['nestedgroupsMap']
-        if len(self.__nestedgroups_map) == 0 and len(self.__nestedgroups) > 0:
-            self.__nestedgroups_map = {}
+        self.__nestedgroupsMap = {} if template is None else template['nestedgroupsMap']
+        if len(self.__nestedgroupsMap) == 0 and len(self.__nestedgroups) > 0:
+            self.__nestedgroupsMap = {}
             for group, events in self.__nestedgroups.items():
                 for e in events:
-                    if e not in self.__nestedgroups_map:
-                        self.__nestedgroups_map[e] = set()
-                    self.__nestedgroups_map[e].add(group)
+                    if e not in self.__nestedgroupsMap:
+                        self.__nestedgroupsMap[e] = set()
+                    self.__nestedgroupsMap[e].add(group)
+
+    def add_extension(self, ext):
+        self.extensions.append(ext)
 
     def obj_to_template(self):
         res = deepcopy(dcr_template)
@@ -245,15 +248,15 @@ class DcrGraph(object):
         res['marking']['included'] = self.__marking.included
         res['marking']['pending'] = self.__marking.pending
         res['labels'] = self.__labels
+        res['labelMapping'] = self.__labelMap
         res['conditionedBy'] = self.__conditionedBy
         res['milestonedBy'] = self.__milestonedBy
         res['responsesTo'] = self.__responsesTo
         res['noresponsesTo'] = self.__noresponsesTo
         res['includesTo'] = self.__includesTo
         res['excludesTo'] = self.__excludesTo
-        res['labelMapping'] = self.__labelMap
         res['nestedgroups'] = self.__nestedgroups
-        res['nestedgroupsMap'] = self.__nestedgroups_map
+        res['nestedgroupsMap'] = self.__nestedgroupsMap
         return res
 
     # @property functions to extract values used for data manipulation and testing
@@ -280,6 +283,16 @@ class DcrGraph(object):
     @labels.setter
     def labels(self, value: Set[str]):
         self.__labels = value
+
+    @property
+    # def label_map(self) -> Dict[str, Set[str]]:
+    def label_map(self) -> Dict[str, str]:
+        return self.__labelMap
+
+    @label_map.setter
+    # def label_map(self, value: Dict[str, Set[str]]):
+    def label_map(self, value: Dict[str, str]):
+        self.__labelMap = value
 
     @property
     def conditioned(self) -> Dict[str, Set[str]]:
@@ -330,16 +343,6 @@ class DcrGraph(object):
         self.__excludesTo = value
 
     @property
-    # def label_map(self) -> Dict[str, Set[str]]:
-    def label_map(self) -> Dict[str, str]:
-        return self.__labelMap
-
-    @label_map.setter
-    # def label_map(self, value: Dict[str, Set[str]]):
-    def label_map(self, value: Dict[str, str]):
-        self.__labelMap = value
-
-    @property
     def nestings(self) -> Dict[str, Set[str]]:
         return self.__nestedgroups
     
@@ -349,13 +352,13 @@ class DcrGraph(object):
 
     @property
     def nested(self) -> Dict[str, Set[str]]:
-        return self.__nestedgroups_map
+        return self.__nestedgroupsMap
 
     @nested.setter
     def nested(self, value: Dict[str, Set[str]]):
-        self.__nestedgroups_map = value
+        self.__nestedgroupsMap = value
 
-    def get_event(self, activity: str) -> str:
+    def get_event(self, activity: str) -> str | None:
         """
         Get the event ID of an activity from graph.
 
@@ -411,7 +414,7 @@ class DcrGraph(object):
             no += len(i)
         for i in self.__responsesTo.values():
             no += len(i)
-        for i in self.__noResponsesTo.values():
+        for i in self.__noresponsesTo.values():
             no += len(i)
         for i in self.__excludesTo.values():
             no += len(i)
@@ -430,10 +433,11 @@ class DcrGraph(object):
 
     def __eq__(self, other):
         return (
-            self.conditioned == other.conditioned
+            self.events == other.events
+            and self.conditioned == other.conditioned
             and self.milestoned == other.milestoned
             and self.responses == other.responses
-            and self.no_responses == other.no_responses
+            and self.noresponses == other.noresponses
             and self.includes == other.includes
             and self.excludes == other.excludes
         )
