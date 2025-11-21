@@ -1,4 +1,6 @@
-## A DCR Graphs implementation in pm4py
+![DCR4Py Logo](https://github.com/paul-cvp/pm4py-dcr/blob/release/dcr4py-logo.png) 
+
+## DCR4Py: An API for Declarative Process Mining in PM4Py using DCR graphs
 
 Tested and working with Python 3.11.0
 
