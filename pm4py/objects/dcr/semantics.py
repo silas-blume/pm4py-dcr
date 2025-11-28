@@ -1,153 +1,112 @@
 from typing import Set
+from collections import defaultdict, deque
 
-from pm4py.objects.dcr.obj import DcrGraph
+from obj import DcrGraph, RelationInfo, ExecutionInfo
+from semantics_interface import SemanticsInterface
+from semantics_classes.base_semantics import BaseSemantics
+from semantics_classes.subprocess_semantics import SubprocessSemanticsMixin
+from semantics_classes.time_semantics import TimeSemanticsMixin
+from semantics_classes.data_and_guard_semantics import DataAndGuardSemanticsMixin
+from semantics_classes.ocdcr_semantics import OcDcrSemanticsMixin
 
-"""
-We will implement the semantics according to the papers given in:
-DCR 2011, and
-Efficient optimal alignment between dynamic condition response graphs and traces
-Following the schematic as the pm4py, by using definition function and no class function for this
-"""
 
-
-class DcrSemantics(object):
-    """
-        the semantics functions implemented is based on the paper by:
-
-        Author: Thomas T. Hildebrandt and Raghava Rao Mukkamala,
-        Title: Declarative Event-BasedWorkflow as Distributed Dynamic Condition Response Graphs
-        publisher: Electronic Proceedings in Theoretical Computer Science. EPTCS, Open Publishing Association, 2010, pp. 59–73. doi: 10.4204/EPTCS.69.5.
-        """
-    @classmethod
-    def is_enabled(cls, event, graph: DcrGraph) -> bool:
-        """
-        Verify that the given event is enabled for execution in the DCR graph
-
-        Parameters
-        ----------
-        :param event: the instance of event being check for if enabled
-        :param graph: DCR graph that it check for being enabled
-
-        Returns
-        -------
-        :return: true if enabled, false otherwise
-        """
-        # check if event is enabled, calls function that returns a graph, of enabled events
-        return event in cls.enabled(graph)
+class EmptySemantics(SemanticsInterface):
 
     @classmethod
-    def enabled(cls, graph: DcrGraph) -> Set[str]:
-        """
-        Creates a list of enabled events, based on included events and conditions constraints met
+    def is_enabled(cls, graph: DcrGraph, event: str) -> bool:
+        return True
 
-        Parameters
-        ----------
-        :param graph: takes the current state of the DCR
-
-        Returns
-        -------
-        :param res: set of enabled activities
-        """
-        # can be extended to check for milestones
-        res = set(graph.marking.included)
-        for e in set(graph.conditioned.keys()).intersection(res):
-            if len(graph.conditioned[e].intersection(graph.marking.included.difference(
-                    graph.marking.executed))) > 0:
-                res.discard(e)
-        for e in set(graph.milestoned.keys()).intersection(res):
-            if len(graph.milestoned[e].intersection(graph.marking.included.intersection(
-                    graph.marking.pending))) > 0:
-                res.discard(e)
+    @classmethod
+    def enabled(cls, graph: DcrGraph, res: Set[str]) -> Set[str]:
         return res
-    
+
     @classmethod
-    def get_sources(cls, graph: DcrGraph, sources: Set[str]):
-        extended_sources = sources
-        for source in sources:
-            if source in graph.nested:
-                extended_sources.update(graph.nested[source])
-        if sources != extended_sources:
-            return cls.get_sources(graph, extended_sources)
+    def get_sources(cls, graph: DcrGraph, source: str, extended_sources: Set[str]) -> Set[str]:
         return extended_sources
     
     @classmethod
-    def apply_effect(cls, graph: DcrGraph, target, effect):
-        if target in graph.nestings:
-            for t_prime in graph.nestings[target]:
-                graph = cls.apply_effect(graph, t_prime, effect)
-        else:
-          match effect:
-              case 'e':
-                  graph.marking.included.discard(target)
-              case 'i':
-                  graph.marking.included.add(target)
-              case 'n':
-                  graph.marking.pending.discard(target)
-              case 'r':
-                  graph.marking.pending.add(target)
-              
-        return graph
+    def get_targets(cls, graph: DcrGraph, target: str, extended_targets: Set[str]) -> Set[str]:
+        return extended_targets
 
     @classmethod
-    def execute(cls, graph: DcrGraph, event):
-        """
-        Function based on semantics of execution a DCR graph
-        will update the graph according to relations of the executed activity
+    def get_effect_order(cls, edges: list[tuple[str, str]]) -> list[str]:
+        graph = defaultdict(set)
+        in_degree = defaultdict(int)
+        nodes = set()
 
-        can extend to allow of execution of milestone activity
+        for before, after in edges:
+            graph[before].add(after)
+            in_degree[after] += 1
+            nodes.add(before)
+            nodes.add(after)
 
-        Parameters
-        ----------
-        :param graph: DCR graph
-        :param event: the event being executed
+        # Nodes with zero incoming edges
+        zero_in_degree = deque([n for n in nodes if in_degree[n] == 0])
+        order = []
 
-        Returns
-        ---------
-        :return: DCR graph with updated marking
-        """
-        if event in graph.marking.pending:
-            graph.marking.pending.discard(event)
-        graph.marking.executed.add(event)
+        while zero_in_degree:
+            node = zero_in_degree.popleft()
+            order.append(node)
+            for neighbor in graph[node]:
+                in_degree[neighbor] -= 1
+                if in_degree[neighbor] == 0:
+                    zero_in_degree.append(neighbor)
 
-        sources = cls.get_sources(graph, set(event))
+        if len(order) != len(nodes):
+            raise ValueError("Cycle detected in effect ordering!")
 
-        for source in sources:
-            if source in graph.excludes:
-                for target in graph.excludes[source]:
-                    cls.apply_effect(graph, target, 'e')
-
-        for source in sources:
-            if source in graph.includes:
-                for target in graph.includes[source]:
-                    cls.apply_effect(graph, target, 'i')
-
-        for source in sources:
-            if source in graph.noresponses:
-                for target in graph.noresponses[source]:
-                    cls.apply_effect(graph, target, 'n')
-
-        for source in sources:
-            if source in graph.responses:
-                for target in graph.responses[source]:
-                    cls.apply_effect(graph, target, 'r')
-
+        return order
+    
+    @classmethod
+    def is_valid(cls, graph: DcrGraph, source: str, target: str, relation_info: RelationInfo) -> bool:
+        return True
+    
+    @classmethod
+    def apply_effects(cls, graph: DcrGraph, original_source: str, effect_order: list[str]) -> DcrGraph:
+        if len(effect_order) < 2:
+            return graph
+        return cls.apply_effects(graph, original_source, effect_order[1:])
+    
+    @classmethod
+    def update_executed_event_state(cls, graph: DcrGraph, event: str, execution_info: ExecutionInfo) -> DcrGraph:
         return graph
+    
+    @classmethod
+    def update_graph_state(cls, graph: DcrGraph, execution_info: ExecutionInfo) -> DcrGraph:
+        return graph
+    
+    @classmethod
+    def perform_execute(cls, graph: DcrGraph, event: str, execution_info: ExecutionInfo) -> DcrGraph:
+        return graph
+    
+    @classmethod
+    def check_execute(cls, graph: DcrGraph, event: str, execution_info: ExecutionInfo) -> bool:
+        return True
+    
+    @classmethod
+    def execute(cls, graph: DcrGraph, event: str, execution_info: ExecutionInfo) -> DcrGraph:
+        graph.returns[-1]['enabled'] = cls.enabled(graph, set())
+        graph.returns[-1]['pending'] = set(graph.marking.pending.keys())
+        return graph
+    
+    @classmethod
+    def is_accepting(cls, graph: DcrGraph, res: Set[str]) -> bool:
+        return len(res) == 0
+
+
+class DcrSemantics():
 
     @classmethod
-    def is_accepting(cls, graph: DcrGraph) -> bool:
-        """
-        Checks if the graph is accepting, no included events are pending
+    def create_semantics_class(cls, name, subprocesses=False, time=False, data_and_guards=False, object_centric=False):
+        mixin_map = {
+            'subprocesses': SubprocessSemanticsMixin,
+            'time': TimeSemanticsMixin,
+            'data_and_guards': DataAndGuardSemanticsMixin,
+            'object_centric': OcDcrSemanticsMixin,
+        }
 
-        Parameters
-        ----------
-        :param graph: DCR Graph
+        extensions = [mixin for flag, mixin in mixin_map.items() if locals()[flag]]
 
-        Returns
-        ---------
-        :return: True if graph is accepting, false otherwise
-        """
-        res = graph.marking.pending.intersection(graph.marking.included)
-        if len(res) > 0:
-            return False
-        else:
-            return True
+        bases = (BaseSemantics,) + tuple(extensions) + (EmptySemantics,)
+
+        return type(name, bases, {})
