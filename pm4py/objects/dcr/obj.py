@@ -176,7 +176,7 @@ class ExecutionInfo(TypedDict, total=False):
 
 class ReturnInfo(TypedDict, total=False):
     """
-    Typeddict to handle varying input for the return value of an execution depending on employed extensions.
+    Typeddict to handle varying output for the return value of an execution depending on employed extensions.
     """
     enabled: Set[str]
     pending: Set[str]
@@ -184,58 +184,81 @@ class ReturnInfo(TypedDict, total=False):
 
 class DcrGraph(object):
     """
-    The DCR Structure was implemented according to definition 3 in [1]_.
-    Follows the idea of DCR graph as a set of tuples
-    G = (E,Act,M,->*,*->,->{+,-},l)
-    G graphs consist of a tuple of the events the activities,
-    the marking of executed, included and pending events, all the relations, and the mapping of events to activities.
+    This class models the elements and state of a DCR Graph.
 
-    References
-    ----------
-    .. [1] Thomas T. Hildebrandt and Raghava Rao Mukkamala, "Declarative Event-BasedWorkflow as Distributed Dynamic Condition Response Graphs",
-      Electronic Proceedings in Theoretical Computer Science — 2011, Volume 69, 59–73. `DOI <10.4204/EPTCS.69.5>`_.
 
     Attributes
     ----------
     self.__events: Set[str]
-        The set of all events in graph
+        The set of all events in the graph
     self.__marking: Marking
-        the marking of the DCR graph loaded in
+        The marking of the graph
     self.__labels: Set[str]
-        The set of activities in Graphs
-    self.__labelMapping: Dict[str, Set[str]]:
-        The set of event and their corresponding activity
-    self.__condiditionsFor: Dict[str, Set[str]]:
-        attribute containing all the conditions relation between events
-    self.__responseTo: Dict[str, Set[str]]:
-        attribute containing all the response relation between events
-    self.__includesTo: Dict[str, Set[str]]:
-        attribute containing all the include relations between events
-    self.__excludesTo: Dict[str, Set[str]]:
-        attribute containing all the exclude relations between events
+        The set of labels for events in the graph
+    self.__eventMap: Dict[str, str]
+        Map from labels to their corresponding event
+    self.__currentTime: datetime
+        The time the graph has reached through execution of timestamped events
+    self.__returns: List[ReturnInfo]
+        A list of results from each execution, ordered from first to last
+    self.__conditionedBy: Dict[str, Dict[str, ConditionInfo]]
+        Attribute containing all the condition relations between events, from the conditioned target to all its sources
+    self.__milestonedBy: Dict[str, Dict[str, MilestoneInfo]]
+        Attribute containing all the milestone relations between events, from the milestoned target to all its sources
+    self.__responsesTo: Dict[str, Dict[str, ResponseInfo]]
+        Attribute containing all the response relations between events, from the responsing source to all its targets
+    self.__noresponsesTo: Dict[str, Dict[str, NoresponseInfo]]
+        Attribute containing all the noresponse relations between events, from the noresponsing source to all its targets
+    self.__includesTo: Dict[str, Dict[str, IncludeInfo]]
+        Attribute containing all the include relations between events, from the including source to all its targets
+    self.__excludesTo: Dict[str, Dict[str, ExcludeInfo]]
+        Attribute containing all the exclude relations between events, from the excluding source to all its targets
+    self.__setsValueTo: Dict[str, Dict[str, SetValueInfo]]
+        Attribute containing all the set value relations between events, from the setting source to all its targets
+    self.__spawnsTo: Dict[str, Dict[str, SpawnInfo]]
+        Attribute containing all the spawn relations from events to all their spawned subgraphs
+    self.__nestings: Dict[str, Set[str]]
+        Map from all nestings to their direct children
+    self.__nestingsMap: Dict[str, Set[str]]
+        Map from all nested elements to their direct nesting parents
+    self.__subprocesses: Dict[str, Set[str]]
+        Map from all subprocesses to their direct children
+    self.__subprocessesMap: Dict[str, str]
+        Map from all elements in the top level of a subprocess to that subprocess
+    self.__subgraphs: Dict[str, SubgraphInfo]
+        Map from all subgraph names to their information
 
     Methods
     --------
-    getEvent(activity) -> str:
-        returns the event of the associated activity
-    getActivity(event) -> str:
-        returns the activity of the given event
-    getConstraints() -> int:
+    set_effective_included():
+        Sets marking.effective_included based on included and subgraph hierarchy
+    obj_to_template():
+        Creates a dict representing the graph for use in instantiating it again at a later time
+    spawn_subgraph(subgraph_name, relation_info):
+        Adds the elements of a subgraph to the graph
+    get_event(label) -> str:
+        returns the event of the given label
+    get_label(event) -> str:
+        returns the label of the given event
+    get_constraints() -> int:
         returns the size of the model based on number of constraints
 
     Parameters
     ----------
     template : dict, optional
-        A template dictionary to initialize the distributed and assignments from, if provided.
+        A template dictionary to initialize the graph from, if provided.
 
     Examples
     --------
-    call this module and call the following
-    graph = DCR_graph(dcr_template)
+    Import this class and call the following
+    graph = DcrGraph(dcr_template)
 
     Notes
     -------
-    * DCR graph can not be initialized with a partially created template, use DCR_template for easy instantiation
+    *   DCR graph can not be initialized with a partially created template, use DCR_template for easy instantiation
+
+    **  For OC-DCR, graphs automatically create nestings for spawned events to handle 'for all'-relations.
+        These should not be modelled in the template.
     """
 
     def __init__(self, template=None, timing_dict: Dict[Tuple[str, str, str], timedelta] | None=None):
@@ -247,10 +270,10 @@ class DcrGraph(object):
                 template['marking']['pending'],
                 template['marking'].get('data', {})
             ))
-        self.__current_time = datetime.fromtimestamp(0) if template is None else template['currentTime']
-        self.__returns = []
         self.__labels = set() if template is None else template['labels']
         self.__eventMap = {} if template is None else template['eventMap']
+        self.__currentTime = datetime.fromtimestamp(0) if template is None else template['currentTime']
+        self.__returns = []
         self.__conditionedBy = {} if template is None else template['conditionedBy']
         self.__milestonedBy = {} if template is None else template['milestonedBy']
         self.__responsesTo = {} if template is None else template['responsesTo']
@@ -259,19 +282,19 @@ class DcrGraph(object):
         self.__excludesTo = {} if template is None else template['excludesTo']
         self.__setsValueTo = {} if template is None else template['setsValueTo']
         self.__spawnsTo = {} if template is None else template['spawnsTo']
-        self.__nestedgroups = {} if template is None else template['nestedgroups']
-        self.__nestedgroupsMap = {} if template is None else template['nestedgroupsMap']
+        self.__nestings = {} if template is None else template['nestedgroups']
+        self.__nestingsMap = {} if template is None else template['nestedgroupsMap']
         self.__subprocesses = {} if template is None else template['subprocesses']
         self.__subprocessesMap = {} if template is None else template['subprocessesMap']
         self.__subgraphs = {} if template is None else self.subgraphs_from_template(template['subgraphs'])
         
-        if len(self.__nestedgroupsMap) == 0 and len(self.__nestedgroups) > 0:
-            self.__nestedgroupsMap = {}
-            for group, events in self.__nestedgroups.items():
+        if len(self.__nestingsMap) == 0 and len(self.__nestings) > 0:
+            self.__nestingsMap = {}
+            for group, events in self.__nestings.items():
                 for e in events:
-                    if e not in self.__nestedgroupsMap:
-                        self.__nestedgroupsMap[e] = set()
-                    self.__nestedgroupsMap[e].add(group)
+                    if e not in self.__nestingsMap:
+                        self.__nestingsMap[e] = set()
+                    self.__nestingsMap[e].add(group)
         if len(self.__subprocessesMap) == 0 and len(self.__subprocesses) > 0:
             self.__subprocessesMap = {}
             for group, events in self.__subprocesses.items():
@@ -319,22 +342,6 @@ class DcrGraph(object):
 
     # @property functions to extract values used for data manipulation and testing
     @property
-    def current_time(self) -> datetime:
-        return self.__current_time
-    
-    @current_time.setter
-    def current_time(self, value: datetime):
-        self.__current_time = value
-
-    @property
-    def returns(self) -> List[ReturnInfo]:
-        return self.__returns
-    
-    @returns.setter
-    def returns(self, value: List[ReturnInfo]):
-        self.__returns = value
-
-    @property
     def events(self) -> Set[str]:
         return self.__events
 
@@ -367,6 +374,22 @@ class DcrGraph(object):
     # def event_map(self, value: Dict[str, Set[str]]):
     def event_map(self, value: Dict[str, str]):
         self.__eventMap = value
+
+    @property
+    def current_time(self) -> datetime:
+        return self.__currentTime
+    
+    @current_time.setter
+    def current_time(self, value: datetime):
+        self.__currentTime = value
+
+    @property
+    def returns(self) -> List[ReturnInfo]:
+        return self.__returns
+    
+    @returns.setter
+    def returns(self, value: List[ReturnInfo]):
+        self.__returns = value
 
     class ConditionInfo(RelationInfo):
         delay: timedelta
@@ -458,19 +481,19 @@ class DcrGraph(object):
 
     @property
     def nestings(self) -> Dict[str, Set[str]]:
-        return self.__nestedgroups
+        return self.__nestings
     
     @nestings.setter
     def nestings(self, value: Dict[str, Set[str]]):
-        self.__nestedgroups = value
+        self.__nestings = value
 
     @property
     def nestings_map(self) -> Dict[str, Set[str]]:
-        return self.__nestedgroupsMap
+        return self.__nestingsMap
 
     @nestings_map.setter
     def nestings_map(self, value: Dict[str, Set[str]]):
-        self.__nestedgroupsMap = value
+        self.__nestingsMap = value
 
     @property
     def subprocesses(self) -> Dict[str, Set[str]]:
@@ -517,14 +540,15 @@ class DcrGraph(object):
         res['excludesTo'] = self.__excludesTo
         res['setsValueTo'] = self.__setsValueTo
         res['spawnsTo'] = self.__spawnsTo
-        res['nestedgroups'] = self.__nestedgroups
-        res['nestedgroupsMap'] = self.__nestedgroupsMap
+        res['nestedgroups'] = self.__nestings
+        res['nestedgroupsMap'] = self.__nestingsMap
         res['subprocesses'] = self.__subprocesses
         res['subprocessesMap'] = self.__subprocessesMap
         res['subgraphs'] = self.subgraphs_to_template()
 
         return res
     
+    # Subroutine of obj_to_template()
     def subgraphs_to_template(self) -> Dict:
         template = {}
         for graph_name, graph_info in self.__subgraphs.items():
@@ -534,6 +558,7 @@ class DcrGraph(object):
             }
         return template
     
+    # Called automatically at init
     def subgraphs_from_template(self, template_subgraphs: Dict) -> Dict[str, SubgraphInfo]:
         subgraphs = {}
         for key in template_subgraphs:
@@ -553,8 +578,11 @@ class DcrGraph(object):
 
         return subgraphs
 
-
     def initialise_spawn_containers(self, top_level_graph: 'DcrGraph', parent_string: str):
+        """
+        Create nestings for all elements in subgraphs
+        Called automatically at init
+        """
         for graph_name, info in self.__subgraphs.items():
             graph = info.get('graph')
             if graph is not None:
@@ -566,6 +594,9 @@ class DcrGraph(object):
 
 
     def spawn_subgraph(self, subgraph_name: str, relation_info: SpawnInfo):
+        """
+        Spawn a subgraph into the graph
+        """
         subgraph = self.__subgraphs[subgraph_name]['graph']
         if subgraph is None:
             return
@@ -577,8 +608,9 @@ class DcrGraph(object):
         def spawn_name(name: str) -> str:
             return f"{subgraph_name}_{name}_{spawn_number}"
 
-        self.__nestedgroups.update({spawn_name(nesting): {spawn_name(event) for event in subgraph.nestings[nesting]} for nesting in subgraph.nestings})
-        self.__nestedgroupsMap.update({spawn_name(event): {spawn_name(nesting) for nesting in subgraph.nestings_map[event]} for event in subgraph.nestings_map})
+        # Add elements to graph. For events, also add to spawn containers
+        self.__nestings.update({spawn_name(nesting): {spawn_name(event) for event in subgraph.nestings[nesting]} for nesting in subgraph.nestings})
+        self.__nestingsMap.update({spawn_name(event): {spawn_name(nesting) for nesting in subgraph.nestings_map[event]} for event in subgraph.nestings_map})
         self.__subprocesses.update({spawn_name(subprocess): {spawn_name(event) for event in subgraph.subprocesses[subprocess]} for subprocess in subgraph.subprocesses})
         self.__subprocessesMap.update({spawn_name(event): spawn_name(subgraph.subprocesses_map[event]) for event in subgraph.subprocesses_map})
         self.__subgraphs.update({spawn_name(subsubgraph): info for subsubgraph, info in subgraph.subgraphs.items()})
@@ -591,22 +623,24 @@ class DcrGraph(object):
                 self.nestings_map[event_name] = set()
             self.nestings_map[event_name].add(container)
 
-        in_nest = subgraph_name in self.__nestedgroupsMap
+        # If subgraph in nesting or subprocess, add top level elements to these
+        in_nest = subgraph_name in self.__nestingsMap
         in_sub = subgraph_name in self.__subprocessesMap
         if in_nest or in_sub:
             elements = subgraph.events | subgraph.nestings.keys() | subgraph.subprocesses.keys() | subgraph.subgraphs.keys()
             top_level_elements = {spawn_name(e) for e in elements if e not in subgraph.nestings_map and e not in subgraph.subprocesses_map}
             if in_nest:
-                for n in self.__nestedgroupsMap[subgraph_name]:
-                    self.__nestedgroups[n].update(top_level_elements)
+                for n in self.__nestingsMap[subgraph_name]:
+                    self.__nestings[n].update(top_level_elements)
                 for e in top_level_elements:
-                    self.__nestedgroupsMap[e].update(self.__nestedgroupsMap[subgraph_name])
+                    self.__nestingsMap[e].update(self.__nestingsMap[subgraph_name])
             if in_sub:
                 for s in self.__subprocessesMap[subgraph_name]:
                     self.__subprocesses[s].update(top_level_elements)
                 for e in top_level_elements:
                     self.__subprocessesMap[e] = self.__subprocessesMap[subgraph_name]
 
+        # Add relations. If for all add to spawn container, else to specific event
         for target, source_dict in subgraph.conditioned.items():
             for source, info in source_dict.items():
                 effective_target = container_name(target) if info.get('for_all_targets', False) else spawn_name(target)
@@ -655,6 +689,7 @@ class DcrGraph(object):
                 effective_target = container_name(target) if info.get('for_all_targets', False) else spawn_name(target)
                 self.__spawnsTo[effective_source][effective_target] = info
 
+        # Set incremented number of spawns
         self.subgraphs[subgraph_name]['spawned'] = spawn_number
         
 
