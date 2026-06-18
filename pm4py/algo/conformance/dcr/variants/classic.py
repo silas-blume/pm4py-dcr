@@ -8,6 +8,9 @@ from pm4py.objects.dcr.obj import DcrGraph
 from pm4py.objects.dcr.distributed.obj import DistributedDcrGraph
 from pm4py.algo.conformance.dcr.decorators.decorator import ConcreteChecker
 from pm4py.algo.conformance.dcr.decorators.roledecorator import RoleDecorator
+from pm4py.objects.dcr.data.obj import DataDcrGraph
+from pm4py.objects.dcr.data.semantics import DataSemantics
+from pm4py.algo.conformance.dcr.decorators.datadecorator import DataConstraintDecorator
 
 
 
@@ -67,7 +70,7 @@ class RuleBasedConformance:
                                                                                     constants.CASE_CONCEPT_NAME))
         self.__log = log
         self.__checker = HandleChecker(graph)
-        self.__semantics = DcrSemantics()
+        self.__semantics = DataSemantics() if isinstance(graph, DataDcrGraph) else DcrSemantics()
         self.__parameters = parameters
 
     def apply_conformance(self) -> List[Dict[str, Any]]:
@@ -110,6 +113,9 @@ class RuleBasedConformance:
         initial_marking['included'] = set(self.__g.marking.included)
         initial_marking['executed'] = set(self.__g.marking.executed)
         initial_marking['pending'] = set(self.__g.marking.pending)
+        # preserve initial event values for data-aware graphs
+        if isinstance(self.__g, DataDcrGraph):
+            initial_marking['eventValues'] = dict(self.__g.marking.event_values)
 
         # iterate through all traces in log
         for trace in self.__log:
@@ -130,6 +136,11 @@ class RuleBasedConformance:
                     for response in self.__g.responses[e]:
                         response_origin.append((e, response))
 
+                # track guarded responses for data-aware graphs
+                if isinstance(self.__g, DataDcrGraph) and e in self.__g.guarded_responses:
+                    for response in self.__g.guarded_responses[e]:
+                        response_origin.append((e, response))
+
                 self.__checker.all_checker(e, event, self.__g, ret[Outputs.DEVIATIONS.value],
                                            parameters=self.__parameters)
 
@@ -137,8 +148,13 @@ class RuleBasedConformance:
                     self.__checker.enabled_checker(e, self.__g, ret[Outputs.DEVIATIONS.value],
                                                    parameters=self.__parameters)
 
-                # execute the event
-                self.__semantics.execute(self.__g, e)
+                # execute the event, passing input value for data-aware graphs
+                if isinstance(self.__g, DataDcrGraph) and self.__g.is_input_event(e):
+                    data_key = self.__parameters.get('data_attribute_key', None) if self.__parameters else None
+                    input_val = event.get(data_key) if data_key and data_key in event else None
+                    self.__semantics.execute(self.__g, e, input_value=input_val)
+                else:
+                    self.__semantics.execute(self.__g, e)
 
                 if len(response_origin) > 0:
                     for i in response_origin:
@@ -244,8 +260,11 @@ class HandleChecker:
         """
         self.checker = ConcreteChecker()
         # check for additional attributes in dcr, instantiate decorator associated
-        if hasattr(graph, 'roles'):
+        if hasattr(graph, 'roles') and len(graph.roles) > 0:
             self.checker = RoleDecorator(self.checker)
+        # add data constraint checking for data-aware graphs
+        if isinstance(graph, DataDcrGraph):
+            self.checker = DataConstraintDecorator(self.checker)
 
     def enabled_checker(self, event: str, graph: Union[DcrGraph, DistributedDcrGraph], deviations: List[Any],
                         parameters: Optional[Dict[Any, Any]] = None) -> None:

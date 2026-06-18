@@ -48,7 +48,8 @@ dcr_template = {
                 'included': set(),
                 'pending': set(),
                 'executedTime': {},  # Gives the time since a event was executed
-                'pendingDeadline': {}  # The deadline until an event must be executed
+                'pendingDeadline': {},  # The deadline until an event must be executed
+                'eventValues': {},  # Stores the current value for each executed event (data-aware)
                 },
     'conditionsForDelays': {},
     'responseToDeadlines': {},
@@ -61,7 +62,16 @@ dcr_template = {
     'principals': set(),
     'roleAssignments': {},
     'readRoleAssignments': {},
-    'principalsAssignments': {}
+    'principalsAssignments': {},
+    # Data-aware DCR graph fields
+    'eventTypes': {},
+    'decisions': {},
+    'guardedConditions': {},
+    'guardedResponses': {},
+    'guardedIncludes': {},
+    'guardedExcludes': {},
+    'guardedMilestones': {},
+    'guardedNoResponses': {},
 }
 
 class Marking:

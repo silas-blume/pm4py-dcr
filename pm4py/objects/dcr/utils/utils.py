@@ -186,7 +186,13 @@ def map_labels_to_events(graph):
 
 
 def cast_to_dcr_object(dcr):
-    if len(dcr['conditionsForDelays']) > 0 or len(dcr['responseToDeadlines']) > 0:
+    if any(dcr.get(k) for k in ('eventTypes', 'decisions',
+                                'guardedConditions', 'guardedResponses',
+                                'guardedIncludes', 'guardedExcludes',
+                                'guardedMilestones', 'guardedNoResponses')):
+        from pm4py.objects.dcr.data.obj import DataDcrGraph
+        return DataDcrGraph(dcr)
+    elif len(dcr['conditionsForDelays']) > 0 or len(dcr['responseToDeadlines']) > 0:
         from pm4py.objects.dcr.timed.obj import TimedDcrGraph
         return TimedDcrGraph(dcr)
     elif len(dcr['subprocesses']) > 0 or len(dcr['nestedgroups']) > 0:
