@@ -1,18 +1,20 @@
 from enum import Enum
-from pm4py.objects.dcr.exporter.variants import xml_dcr_portal, dcr_js_portal, xml_simple
+from pm4py.objects.dcr.exporter.variants import xml_dcr_portal, dcr_js_portal, xml_simple, xml_dcr_data
 
 
 class Variants(Enum):
     XML_SIMPLE = xml_simple
     XML_DCR_PORTAL = xml_dcr_portal
     DCR_JS_PORTAL = dcr_js_portal
+    XML_DCR_DATA = xml_dcr_data
 
 
 XML_SIMPLE = Variants.XML_SIMPLE
 XML_DCR_PORTAL = Variants.XML_DCR_PORTAL
 DCR_JS_PORTAL = Variants.DCR_JS_PORTAL
+XML_DCR_DATA = Variants.XML_DCR_DATA
 
-VERSIONS = {XML_SIMPLE, XML_DCR_PORTAL, DCR_JS_PORTAL}
+VERSIONS = {XML_SIMPLE, XML_DCR_PORTAL, DCR_JS_PORTAL, XML_DCR_DATA}
 
 
 def apply(dcr_graph, path, variant=XML_SIMPLE, **parameters):
@@ -30,6 +32,7 @@ def apply(dcr_graph, path, variant=XML_SIMPLE, **parameters):
             - XML_SIMPLE
             - XML_DCR_PORTAL
             - DCR_JS_PORTAL
+            - XML_DCR_DATA
     parameters
         Algorithm related params
         white_space_replacement: a character
@@ -40,3 +43,5 @@ def apply(dcr_graph, path, variant=XML_SIMPLE, **parameters):
         xml_simple.export_dcr_xml(dcr_graph, output_file_name=path, **parameters)
     elif variant is Variants.DCR_JS_PORTAL:
         dcr_js_portal.export_dcr_xml(dcr_graph, output_file_name=path, **parameters)
+    elif variant is Variants.XML_DCR_DATA:
+        xml_dcr_data.export_dcr_xml(dcr_graph, output_file_name=path, **parameters)

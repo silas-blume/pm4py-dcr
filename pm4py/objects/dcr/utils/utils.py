@@ -98,9 +98,19 @@ def clean_input(graph: DcrGraph, white_space_replacement=None, all=False):
 def clean_input_as_dict(dcr, white_space_replacement=None):
     if white_space_replacement is None:
         white_space_replacement = ' '
+
+    # Data-aware fields carry Guard/Expression/DataType objects — skip clean-up.
+    _DATA_PASSTHROUGH_KEYS = {
+        'eventTypes', 'decisions',
+        'guardedConditions', 'guardedResponses', 'guardedIncludes',
+        'guardedExcludes', 'guardedMilestones', 'guardedNoResponses',
+    }
+
     # remove all space characters and put conditions and milestones in the correct order (according to the actual arrows)
     for k, v in deepcopy(dcr).items():
-        if k in [tr.value for tr in TemplateRelations]:
+        if k in _DATA_PASSTHROUGH_KEYS:
+            continue  # preserve as-is
+        elif k in [tr.value for tr in TemplateRelations]:
             v_new = {}
             for k2, v2 in v.items():
                 v_new[k2.strip().replace(' ', white_space_replacement)] = set(
@@ -116,6 +126,13 @@ def clean_input_as_dict(dcr, white_space_replacement=None):
             for k2 in ['executed', 'included', 'pending']:
                 new_v = set([v2.strip().replace(' ', white_space_replacement) for v2 in dcr[k][k2]])
                 dcr[k][k2] = new_v
+            # eventValues: remap event-ID keys with whitespace replacement, preserve values
+            if 'eventValues' in dcr[k]:
+                ev_new = {
+                    eid.strip().replace(' ', white_space_replacement): val
+                    for eid, val in dcr[k]['eventValues'].items()
+                }
+                dcr[k]['eventValues'] = ev_new
         elif k in ['subprocesses', 'nestedgroups', 'roleAssignments', 'readRoleAssignments', 'principalsAssignments']:
             v_new = {}
             for k2, v2 in v.items():
@@ -148,7 +165,44 @@ def map_labels_to_events(graph):
     id_to_label = dcr['labelMapping']
     dcr_res = deepcopy(dcr_template)
     new_label_map = {v:v for k,v in id_to_label.items()}
+
+    # Guarded relation dicts have the structure  key_id -> {val_id -> Guard}.
+    # The event ID keys must be remapped to labels, but the Guard values are
+    # opaque objects that must be copied as-is (they are not sets of event IDs).
+    _GUARDED_KEYS = {
+        'guardedConditions', 'guardedResponses', 'guardedIncludes',
+        'guardedExcludes', 'guardedMilestones', 'guardedNoResponses',
+    }
+
     for k, v in dcr.items():
+        # --- guarded relations: remap event-ID keys, preserve Guard values ---
+        if k in _GUARDED_KEYS:
+            remapped = {}
+            for outer_id, inner_dict in v.items():
+                outer_label = id_to_label.get(outer_id, outer_id)
+                remapped[outer_label] = {
+                    id_to_label.get(inner_id, inner_id): guard
+                    for inner_id, guard in inner_dict.items()
+                }
+            dcr_res[k] = remapped
+            continue
+
+        # --- decisions dict: remap event-ID keys, preserve Expression/? values ---
+        if k == 'decisions':
+            dcr_res[k] = {
+                id_to_label.get(event_id, event_id): expr
+                for event_id, expr in v.items()
+            }
+            continue
+
+        # --- eventTypes dict: remap event-ID keys, preserve DataType values ---
+        if k == 'eventTypes':
+            dcr_res[k] = {
+                id_to_label.get(event_id, event_id): dtype
+                for event_id, dtype in v.items()
+            }
+            continue
+
         if k in id_to_label:
             k = id_to_label[k]
         if isinstance(v, dict):
@@ -166,7 +220,7 @@ def map_labels_to_events(graph):
                                 dcr_res[k][k2][k3] = v3
                         elif k in ['conditionsForDelays', 'responseToDeadlines']:
                             dcr_res[k][k2] = {id_to_label[i0]: i1 for i0, i1 in v2.items()}
-                        elif k2 == 'pendingDeadline':
+                        elif k2 == 'pendingDeadline' or k2 == 'eventValues':
                             dcr_res[k][k2][k22] = v22
                         else:
                             dcr_res[k][k2][k22] = set([id_to_label[i] for i in v22])

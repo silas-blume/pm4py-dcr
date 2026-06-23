@@ -1,6 +1,6 @@
 from enum import Enum
 
-from pm4py.objects.dcr.importer.variants import xml_dcr_portal, xml_simple
+from pm4py.objects.dcr.importer.variants import xml_dcr_portal, xml_simple, xml_dcr_data
 from pm4py.util import exec_utils
 
 
@@ -8,11 +8,13 @@ class Variants(Enum):
     XML_DCR_PORTAL = xml_dcr_portal
     XML_SIMPLE = xml_simple
     DCR_JS_PORTAL = xml_dcr_portal
+    XML_DCR_DATA = xml_dcr_data
 
 
 XML_SIMPLE = Variants.XML_SIMPLE
 XML_DCR_PORTAL = Variants.XML_DCR_PORTAL
 DCR_JS_PORTAL = Variants.DCR_JS_PORTAL
+XML_DCR_DATA = Variants.XML_DCR_DATA
 
 
 def apply(path, variant=XML_DCR_PORTAL, parameters=None):
