@@ -39,17 +39,19 @@ class DataSemantics(ExtendedSemantics):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _evaluate_guard(guard: 'Guard', event_values: Dict[str, Any]) -> bool:
+    def _evaluate_guard(guard: 'Guard', event_values: Dict[str, Any],
+                        registry: Dict = None) -> bool:
         """Safely evaluate a guard, returning ``False`` on missing values."""
         try:
-            return guard.evaluate(event_values)
+            return guard.evaluate(event_values, registry)
         except (ValueError, KeyError, TypeError):
             return False
 
     @classmethod
     def _apply_guarded_relation(cls, event: str, guarded_map: Dict,
                                 event_values: Dict[str, Any],
-                                target_set: Set[str], action: str):
+                                target_set: Set[str], action: str,
+                                registry: Dict = None):
         """Apply a guarded relation effect (add/discard) to a marking set.
 
         Parameters
@@ -64,12 +66,14 @@ class DataSemantics(ExtendedSemantics):
             The marking set to modify (e.g. ``pending``, ``included``).
         action : 'add' | 'discard'
             Whether to add to or discard from the target set.
+        registry : dict, optional
+            Predicate function registry for :class:`FunctionCallExpression` guards.
         """
         if event not in guarded_map:
             return
         mutate = getattr(target_set, action)
         for target, guard in guarded_map[event].items():
-            if cls._evaluate_guard(guard, event_values):
+            if cls._evaluate_guard(guard, event_values, registry):
                 mutate(target)
 
     # ------------------------------------------------------------------
@@ -108,6 +112,7 @@ class DataSemantics(ExtendedSemantics):
             return BaseSem.enabled(graph)
 
         event_values = graph.marking.event_values
+        registry = graph.predicate_registry
 
         # Start with all included events
         res = set(graph.marking.included)
@@ -125,7 +130,7 @@ class DataSemantics(ExtendedSemantics):
             for source, guard in sources.items():
                 if source not in graph.marking.included:
                     continue
-                if cls._evaluate_guard(guard, event_values) and source not in graph.marking.executed:
+                if cls._evaluate_guard(guard, event_values, registry) and source not in graph.marking.executed:
                     res.discard(target)
                     break
 
@@ -143,7 +148,7 @@ class DataSemantics(ExtendedSemantics):
             for source, guard in sources.items():
                 if source not in graph.marking.included:
                     continue
-                if cls._evaluate_guard(guard, event_values) and source in graph.marking.pending:
+                if cls._evaluate_guard(guard, event_values, registry) and source in graph.marking.pending:
                     res.discard(target)
                     break
 
@@ -191,13 +196,14 @@ class DataSemantics(ExtendedSemantics):
             return BaseSem.execute(graph, event)
 
         event_values = graph.marking.event_values
+        registry = graph.predicate_registry
 
         # --- Compute value (Definition 4, last paragraph) ---
         decision = graph.decisions.get(event)
         if decision == INPUT_MARKER:
             value = input_value
         elif isinstance(decision, Expression):
-            value = decision.evaluate(event_values)
+            value = decision.evaluate(event_values, registry)
         else:
             value = None
 
@@ -215,28 +221,28 @@ class DataSemantics(ExtendedSemantics):
             for e_prime in graph.noresponses[event]:
                 graph.marking.pending.discard(e_prime)
         cls._apply_guarded_relation(event, graph.guarded_noresponses,
-                                    event_values, graph.marking.pending, 'discard')
+                                    event_values, graph.marking.pending, 'discard', registry)
 
         # Exclude
         if event in graph.excludes:
             for e_prime in graph.excludes[event]:
                 graph.marking.included.discard(e_prime)
         cls._apply_guarded_relation(event, graph.guarded_excludes,
-                                    event_values, graph.marking.included, 'discard')
+                                    event_values, graph.marking.included, 'discard', registry)
 
         # Include
         if event in graph.includes:
             for e_prime in graph.includes[event]:
                 graph.marking.included.add(e_prime)
         cls._apply_guarded_relation(event, graph.guarded_includes,
-                                    event_values, graph.marking.included, 'add')
+                                    event_values, graph.marking.included, 'add', registry)
 
         # Response
         if event in graph.responses:
             for e_prime in graph.responses[event]:
                 graph.marking.pending.add(e_prime)
         cls._apply_guarded_relation(event, graph.guarded_responses,
-                                    event_values, graph.marking.pending, 'add')
+                                    event_values, graph.marking.pending, 'add', registry)
 
         return graph
 

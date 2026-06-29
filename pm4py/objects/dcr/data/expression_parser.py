@@ -60,6 +60,7 @@ from pm4py.objects.dcr.data.expressions import (
     CompExpression, CompOp,
     EventRef,
     Expression,
+    FunctionCallExpression,
     Guard,
     IfThenElseExpression,
     IntConstant,
@@ -95,6 +96,8 @@ class _TT(Enum):
     ELSE = auto()
     LPAREN = auto()
     RPAREN = auto()
+    COMMA = auto()
+    IDENT = auto()      # bare identifier — predicate function name
     EOF = auto()
 
 
@@ -167,6 +170,10 @@ def _tokenize(s: str) -> list:
             tokens.append(_Token(_TT.MUL))
             i += 1
             continue
+        if ch == ',':
+            tokens.append(_Token(_TT.COMMA))
+            i += 1
+            continue
         if ch == '?':
             tokens.append(_Token(_TT.QUESTION))
             i += 1
@@ -216,7 +223,8 @@ def _tokenize(s: str) -> list:
             if kw:
                 tokens.append(_Token(kw[0], kw[1]))
             else:
-                raise ValueError(f"Unknown keyword {word!r} in expression: {s!r}")
+                # Not a reserved keyword — treat as a predicate function name
+                tokens.append(_Token(_TT.IDENT, word))
             i = j
             continue
 
@@ -358,6 +366,18 @@ class _Parser:
             case _TT.VOID:
                 self._consume(_TT.VOID)
                 return VoidExpression()
+            case _TT.IDENT:
+                # Predicate function call: name '(' [expr (',' expr)*] ')'
+                name = self._consume(_TT.IDENT).value
+                self._consume(_TT.LPAREN)
+                args = []
+                if self._peek().type != _TT.RPAREN:
+                    args.append(self._expr())
+                    while self._peek().type == _TT.COMMA:
+                        self._consume(_TT.COMMA)
+                        args.append(self._expr())
+                self._consume(_TT.RPAREN)
+                return FunctionCallExpression(name, args)
             case _:
                 raise ValueError(
                     f"Unexpected token {tok} at position {self._pos} — "
@@ -486,6 +506,9 @@ def serialize_expression(expr: Union[Expression, str]) -> str:
             then = serialize_expression(expr.then_expr)
             else_ = serialize_expression(expr.else_expr)
             return f'if {cond} then {then} else {else_}'
+        case FunctionCallExpression():
+            args_str = ', '.join(serialize_expression(a) for a in expr.args)
+            return f'{expr.name}({args_str})'
         case _:
             raise TypeError(f"Cannot serialise expression of type {type(expr).__name__}")
 

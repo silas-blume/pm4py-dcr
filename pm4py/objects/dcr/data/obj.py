@@ -31,11 +31,12 @@ References
    Data.  BPM 2021 Workshops, LNBIP 436, pp. 362-374.
 """
 from copy import deepcopy
-from typing import Any, Dict, Optional, Set
+from typing import Any, Callable, Dict, Optional, Set
 
 from pm4py.objects.dcr.data.expressions import (
     DataType, Expression, Guard, INPUT_MARKER,
 )
+from pm4py.objects.dcr.data.predicate_loader import DataPredicate
 from pm4py.objects.dcr.timed.obj import TimedDcrGraph, TimedMarking
 
 # Template keys for the six guarded relation types, paired with their
@@ -179,6 +180,9 @@ class DataDcrGraph(TimedDcrGraph):
                 {} if template is None else template.get(key, {})
             )
 
+        # --- Predicate registry (injectable user functions for guard evaluation) ---
+        self.__predicate_registry: Dict[str, DataPredicate] = {}
+
     # ---- Marking override ----
 
     @property
@@ -217,6 +221,17 @@ class DataDcrGraph(TimedDcrGraph):
         """Check if an event is a decision event (D(e) is an Expression)."""
         d = self.__decisions.get(event)
         return d is not None and d != INPUT_MARKER and isinstance(d, Expression)
+
+    # ---- Predicate registry ----
+
+    @property
+    def predicate_registry(self) -> Dict[str, DataPredicate]:
+        """Mapping from predicate name to callable for guard evaluation."""
+        return self.__predicate_registry
+
+    @predicate_registry.setter
+    def predicate_registry(self, value: Dict[str, DataPredicate]):
+        self.__predicate_registry = value
 
     # ---- Guarded relations ----
 

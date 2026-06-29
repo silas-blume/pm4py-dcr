@@ -13,10 +13,10 @@ from pm4py.objects.dcr.data.semantics import DataSemantics
 from pm4py.algo.conformance.dcr.decorators.datadecorator import DataConstraintDecorator
 
 
-
 class Parameters(Enum):
     CASE_ID_KEY = constants.PARAMETER_CONSTANT_CASEID_KEY
     ACTIVITY_KEY = constants.PARAMETER_CONSTANT_ACTIVITY_KEY
+    PREDICATE_FILE_PATH = 'predicate_file_path'
 
 class Outputs(Enum):
     FITNESS = "dev_fitness"
@@ -72,6 +72,15 @@ class RuleBasedConformance:
         self.__checker = HandleChecker(graph)
         self.__semantics = DataSemantics() if isinstance(graph, DataDcrGraph) else DcrSemantics()
         self.__parameters = parameters
+
+        # Load user-supplied predicates onto the graph's registry
+        if isinstance(graph, DataDcrGraph) and parameters:
+            pred_path = exec_utils.get_param_value(
+                Parameters.PREDICATE_FILE_PATH, parameters, None
+            )
+            if pred_path:
+                from pm4py.objects.dcr.data.predicate_loader import load_predicates
+                graph.predicate_registry = load_predicates(pred_path)
 
     def apply_conformance(self) -> List[Dict[str, Any]]:
         """

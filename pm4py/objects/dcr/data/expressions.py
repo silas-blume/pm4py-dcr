@@ -21,7 +21,7 @@ References
 """
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 
 class DataType(Enum):
@@ -39,7 +39,8 @@ class Expression(ABC):
     """Base class for all expression AST nodes."""
 
     @abstractmethod
-    def evaluate(self, event_values: Dict[str, Any]) -> Any:
+    def evaluate(self, event_values: Dict[str, Any],
+                 registry: Optional[Dict[str, Callable]] = None) -> Any:
         """
         Evaluate the expression given a mapping from event ids to their current values.
 
@@ -47,6 +48,9 @@ class Expression(ABC):
         ----------
         event_values : Dict[str, Any]
             Mapping event_id -> value (int, bool, or None for void).
+        registry : dict, optional
+            Mapping from predicate name to callable, used by
+            :class:`FunctionCallExpression` nodes.
 
         Returns
         -------
@@ -69,7 +73,8 @@ class Expression(ABC):
 class VoidExpression(Expression):
     """The void expression, used for events without data."""
 
-    def evaluate(self, event_values: Dict[str, Any]) -> None:
+    def evaluate(self, event_values: Dict[str, Any],
+                 registry: Optional[Dict[str, Callable]] = None) -> None:
         return None
 
     def __repr__(self):
@@ -86,7 +91,8 @@ class IntConstant(Expression):
     def __init__(self, value: int):
         self.value = value
 
-    def evaluate(self, event_values: Dict[str, Any]) -> int:
+    def evaluate(self, event_values: Dict[str, Any],
+                 registry: Optional[Dict[str, Callable]] = None) -> int:
         return self.value
 
     def __repr__(self):
@@ -103,7 +109,8 @@ class EventRef(Expression):
     def __init__(self, event_id: str):
         self.event_id = event_id
 
-    def evaluate(self, event_values: Dict[str, Any]) -> Any:
+    def evaluate(self, event_values: Dict[str, Any],
+                 registry: Optional[Dict[str, Callable]] = None) -> Any:
         if self.event_id not in event_values:
             raise ValueError(
                 f"Event '{self.event_id}' has no value in the current marking. "
@@ -121,7 +128,8 @@ class BoolConstant(Expression):
     def __init__(self, value: bool):
         self.value = value
 
-    def evaluate(self, event_values: Dict[str, Any]) -> bool:
+    def evaluate(self, event_values: Dict[str, Any],
+                 registry: Optional[Dict[str, Callable]] = None) -> bool:
         return self.value
 
     def __repr__(self):
@@ -153,9 +161,10 @@ class ArithExpression(Expression):
         self.op = op
         self.right = right
 
-    def evaluate(self, event_values: Dict[str, Any]) -> int:
-        left_val = self.left.evaluate(event_values)
-        right_val = self.right.evaluate(event_values)
+    def evaluate(self, event_values: Dict[str, Any],
+                 registry: Optional[Dict[str, Callable]] = None) -> int:
+        left_val = self.left.evaluate(event_values, registry)
+        right_val = self.right.evaluate(event_values, registry)
         return _ARITH_OPS[self.op](left_val, right_val)
 
     def __repr__(self):
@@ -191,9 +200,10 @@ class CompExpression(Expression):
         self.op = op
         self.right = right
 
-    def evaluate(self, event_values: Dict[str, Any]) -> bool:
-        left_val = self.left.evaluate(event_values)
-        right_val = self.right.evaluate(event_values)
+    def evaluate(self, event_values: Dict[str, Any],
+                 registry: Optional[Dict[str, Callable]] = None) -> bool:
+        left_val = self.left.evaluate(event_values, registry)
+        right_val = self.right.evaluate(event_values, registry)
         return _COMP_OPS[self.op](left_val, right_val)
 
     def __repr__(self):
@@ -223,9 +233,10 @@ class BoolBinaryExpression(Expression):
         self.op = op
         self.right = right
 
-    def evaluate(self, event_values: Dict[str, Any]) -> bool:
-        left_val = self.left.evaluate(event_values)
-        right_val = self.right.evaluate(event_values)
+    def evaluate(self, event_values: Dict[str, Any],
+                 registry: Optional[Dict[str, Callable]] = None) -> bool:
+        left_val = self.left.evaluate(event_values, registry)
+        right_val = self.right.evaluate(event_values, registry)
         return _BOOL_OPS[self.op](left_val, right_val)
 
     def __repr__(self):
@@ -238,8 +249,9 @@ class NotExpression(Expression):
     def __init__(self, operand: Expression):
         self.operand = operand
 
-    def evaluate(self, event_values: Dict[str, Any]) -> bool:
-        return not self.operand.evaluate(event_values)
+    def evaluate(self, event_values: Dict[str, Any],
+                 registry: Optional[Dict[str, Callable]] = None) -> bool:
+        return not self.operand.evaluate(event_values, registry)
 
     def __repr__(self):
         return f'(not {self.operand})'
@@ -253,14 +265,53 @@ class IfThenElseExpression(Expression):
         self.then_expr = then_expr
         self.else_expr = else_expr
 
-    def evaluate(self, event_values: Dict[str, Any]) -> Any:
-        if self.condition.evaluate(event_values):
-            return self.then_expr.evaluate(event_values)
+    def evaluate(self, event_values: Dict[str, Any],
+                 registry: Optional[Dict[str, Callable]] = None) -> Any:
+        if self.condition.evaluate(event_values, registry):
+            return self.then_expr.evaluate(event_values, registry)
         else:
-            return self.else_expr.evaluate(event_values)
+            return self.else_expr.evaluate(event_values, registry)
 
     def __repr__(self):
         return f'(if {self.condition} then {self.then_expr} else {self.else_expr})'
+
+
+class FunctionCallExpression(Expression):
+    """
+    ``name(arg1, arg2, ...)`` — a call to a user-supplied predicate function.
+
+    The function is resolved by name from the *registry* dict at evaluation
+    time.  If the registry is ``None`` or the name is not present, a
+    ``KeyError`` is raised (which :class:`Guard`'s caller,
+    :meth:`DataSemantics._evaluate_guard`, catches and converts to ``False``).
+
+    Parameters
+    ----------
+    name : str
+        Public Python identifier naming the predicate function.
+    args : list of Expression
+        Argument expressions, evaluated in order against ``event_values``
+        and passed as positional arguments to the function.
+    """
+
+    def __init__(self, name: str, args: List[Expression]):
+        self.name = name
+        self.args = args
+
+    def evaluate(self, event_values: Dict[str, Any],
+                 registry: Optional[Dict[str, Callable]] = None) -> bool:
+        if registry is None or self.name not in registry:
+            raise KeyError(
+                f"Predicate '{self.name}' not found in registry. "
+                "Register it on DataDcrGraph.predicate_registry."
+            )
+        fn = registry[self.name]
+        evaluated_args = [a.evaluate(event_values, registry) for a in self.args]
+        return bool(fn(*evaluated_args))
+
+    def __repr__(self):
+        args_repr = ', '.join(repr(a) for a in self.args)
+        return f'{self.name}({args_repr})'
 
 
 # ---------------------------------------------------------------------------
@@ -291,10 +342,11 @@ class Guard:
     def __init__(self, expression: Optional[Expression] = None):
         self.expression = expression
 
-    def evaluate(self, event_values: Dict[str, Any]) -> bool:
+    def evaluate(self, event_values: Dict[str, Any],
+                 registry: Optional[Dict[str, Callable]] = None) -> bool:
         if self.expression is None:
             return True
-        return bool(self.expression.evaluate(event_values))
+        return bool(self.expression.evaluate(event_values, registry))
 
     @property
     def is_trivial(self) -> bool:

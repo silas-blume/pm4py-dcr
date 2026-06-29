@@ -32,13 +32,14 @@ class CheckDataGuard(CheckFrame):
             return deviations
 
         event_values = graph.marking.event_values
+        registry = graph.predicate_registry
 
         # --- Guarded condition violations ---
         if event in graph.guarded_conditions:
             for source, guard in graph.guarded_conditions[event].items():
                 if source not in graph.marking.included:
                     continue
-                if (DataSemantics._evaluate_guard(guard, event_values)
+                if (DataSemantics._evaluate_guard(guard, event_values, registry)
                         and source not in graph.marking.executed):
                     dev = ('dataConditionViolation', (source, event, repr(guard)))
                     if dev not in deviations:
@@ -49,7 +50,7 @@ class CheckDataGuard(CheckFrame):
             for source, guard in graph.guarded_milestones[event].items():
                 if source not in graph.marking.included:
                     continue
-                if (DataSemantics._evaluate_guard(guard, event_values)
+                if (DataSemantics._evaluate_guard(guard, event_values, registry)
                         and source in graph.marking.pending):
                     dev = ('dataMilestoneViolation', (source, event, repr(guard)))
                     if dev not in deviations:
