@@ -19,7 +19,7 @@ References
    (2022). Decision Modelling in Timed Dynamic Condition Response Graphs with
    Data.  BPM 2021 Workshops, LNBIP 436, pp. 362-374.
 """
-from typing import Any, Dict, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from pm4py.objects.dcr.data.expressions import Expression, Guard, INPUT_MARKER
 from pm4py.objects.dcr.data.obj import DataDcrGraph
@@ -155,6 +155,82 @@ class DataSemantics(ExtendedSemantics):
         return res
 
     # ------------------------------------------------------------------
+    # Enablement diagnostics
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def enablement_blockers(cls, event: str, graph) -> List[str]:
+        """
+        Explain why ``event`` is not enabled, mirroring :meth:`enabled`'s
+        exact blocking conditions (same checks, same order), decomposed to
+        report *why* instead of only returning the enabled set. Falls back
+        to the base :meth:`DcrSemantics.enablement_blockers` for non-data
+        graphs, exactly as :meth:`enabled` falls back to
+        ``DcrSemantics.enabled`` -- including that fallback's own scope
+        limitations (e.g. no milestone handling for non-data graphs).
+
+        Parameters
+        ----------
+        graph : DataDcrGraph
+
+        Returns
+        -------
+        List[str]
+            Human-readable blocker descriptions (empty if none).
+        """
+        if not isinstance(graph, DataDcrGraph):
+            from pm4py.objects.dcr.semantics import DcrSemantics as BaseSem
+            return BaseSem.enablement_blockers(event, graph)
+
+        event_values = graph.marking.event_values
+        registry = graph.predicate_registry
+        included = graph.marking.included
+        executed = graph.marking.executed
+        pending = graph.marking.pending
+
+        blockers: List[str] = []
+
+        if event not in included:
+            blockers.append("event is excluded (not included in current marking)")
+
+        # --- Standard (unguarded) conditions ---
+        unmet = sorted(graph.conditions.get(event, set()) & included - executed)
+        if unmet:
+            blockers.append(f"unmet condition(s): {', '.join(unmet)}")
+
+        # --- Guarded conditions ---
+        unmet_guarded = sorted(
+            source for source, guard in graph.guarded_conditions.get(event, {}).items()
+            if source in included and source not in executed
+            and cls._evaluate_guard(guard, event_values, registry)
+        )
+        if unmet_guarded:
+            blockers.append(f"unmet guarded condition(s): {', '.join(unmet_guarded)}")
+
+        # --- Standard (unguarded) milestones ---
+        if hasattr(graph, 'milestones'):
+            blocking_ms = sorted(graph.milestones.get(event, set()) & included & pending)
+            if blocking_ms:
+                blockers.append(
+                    "blocking milestone(s) with pending responses: "
+                    + ", ".join(blocking_ms)
+                )
+
+        # --- Guarded milestones ---
+        active_guarded_ms = sorted(
+            source for source, guard in graph.guarded_milestones.get(event, {}).items()
+            if source in included and source in pending
+            and cls._evaluate_guard(guard, event_values, registry)
+        )
+        if active_guarded_ms:
+            blockers.append(
+                "blocking guarded milestone(s) with pending responses: "
+                + ", ".join(active_guarded_ms)
+            )
+
+        return blockers
+
+    # ------------------------------------------------------------------
     # Execution (Definition 4)
     # ------------------------------------------------------------------
 
@@ -245,6 +321,57 @@ class DataSemantics(ExtendedSemantics):
                                     event_values, graph.marking.pending, 'add', registry)
 
         return graph
+
+    # ------------------------------------------------------------------
+    # Closure resolution
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def resolve_closure(cls, graph, closure: Set[str],
+                        resolve_input: Callable[[str], Any]) -> None:
+        """
+        Execute every input/decision event in ``closure`` that can be
+        resolved, as a bounded fixpoint: input events get their value from
+        ``resolve_input`` (returning ``None`` means "not yet resolvable, try
+        again next pass"); decision events execute directly once their own
+        dependencies are ready (a raised ``ValueError``/``KeyError``/
+        ``TypeError`` means "not yet", not an error). Mutates ``graph`` in
+        place. Bounded by ``len(closure)`` passes, since closure members can
+        depend on each other in arbitrary order.
+
+        Parameters
+        ----------
+        graph : DataDcrGraph
+            Modified in place.
+        closure : Set[str]
+            Input/decision event ids to attempt to resolve.
+        resolve_input : Callable[[str], Any]
+            Given an input event id, returns its value, or ``None`` if
+            unresolved this pass.
+        """
+        pending = set(closure)
+        for _ in range(len(closure)):
+            if not pending:
+                break
+            still_pending: Set[str] = set()
+            progressed = False
+            for event_id in pending:
+                if graph.is_input_event(event_id):
+                    value = resolve_input(event_id)
+                    if value is None:
+                        still_pending.add(event_id)
+                        continue
+                    cls.execute(graph, event_id, input_value=value)
+                else:  # decision event
+                    try:
+                        cls.execute(graph, event_id)
+                    except (ValueError, KeyError, TypeError):
+                        still_pending.add(event_id)
+                        continue
+                progressed = True
+            pending = still_pending
+            if not progressed:
+                break
 
     @classmethod
     def is_accepting(cls, graph) -> bool:

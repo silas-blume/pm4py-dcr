@@ -1198,3 +1198,218 @@ class TestExpressionEquality(unittest.TestCase):
     def test_not_equal_to_non_expression(self):
         e1 = const(5)
         self.assertNotEqual(e1, "not an expression")
+
+
+# =========================================================================
+# 6. DataDcrGraph.data_dependency_closure
+# =========================================================================
+
+class TestDataDependencyClosure(unittest.TestCase):
+
+    def _make_graph(self):
+        g = DataDcrGraph()
+        g.events = {'A', 'B', 'C', 'D', 'Void'}
+        g.marking.included = set(g.events)
+        g.labels = set(g.events)
+        g.label_map = {e: e for e in g.events}
+        g.event_types = {
+            'A': DataType.INT, 'B': DataType.INT, 'C': DataType.INT, 'D': DataType.VOID,
+            'Void': DataType.VOID,
+        }
+        g.decisions = {
+            'A': INPUT_MARKER,
+            'B': INPUT_MARKER,
+            'C': eq(event_ref('B'), const(1)),
+        }
+        return g
+
+    def test_linear_chain_condition(self):
+        """D <-[condition]- C <-[condition]- B: closure of D is {B, C}."""
+        g = self._make_graph()
+        g.conditions = {'D': {'C'}, 'C': {'B'}}
+        closure = g.data_dependency_closure('D')
+        self.assertEqual(closure, {'B', 'C'})
+
+    def test_guarded_condition_included(self):
+        g = self._make_graph()
+        g.guarded_conditions = {'D': {'A': Guard(eq(event_ref('A'), const(1)))}}
+        closure = g.data_dependency_closure('D')
+        self.assertEqual(closure, {'A'})
+
+    def test_milestone_and_guarded_milestone_included(self):
+        g = self._make_graph()
+        g.milestones['D'] = {'B'}  # milestones has no setter; mutate in place
+        g.guarded_milestones = {'D': {'A': Guard(eq(event_ref('A'), const(1)))}}
+        closure = g.data_dependency_closure('D')
+        self.assertEqual(closure, {'A', 'B'})
+
+    def test_void_source_not_recursed_into(self):
+        """A void event blocking D is not part of the data closure, even if
+        something data-aware is transitively behind it."""
+        g = self._make_graph()
+        g.conditions = {'D': {'Void'}, 'Void': {'A'}}
+        closure = g.data_dependency_closure('D')
+        self.assertEqual(closure, set())
+
+    def test_transitive_through_computed_event(self):
+        """C is a computed event gated on B; D's closure should include both
+        B and C since C is itself a decision event reachable from D."""
+        g = self._make_graph()
+        g.conditions = {'D': {'C'}}
+        closure = g.data_dependency_closure('D')
+        self.assertEqual(closure, {'C'})
+
+    def test_cyclic_relations_terminate(self):
+        """A cycle between two input events must not infinite-loop; both
+        ends of the cycle are legitimately reachable data dependencies."""
+        g = self._make_graph()
+        g.conditions = {'A': {'B'}, 'B': {'A'}}
+        closure = g.data_dependency_closure('A')
+        self.assertEqual(closure, {'A', 'B'})
+
+    def test_no_relations_empty_closure(self):
+        g = self._make_graph()
+        self.assertEqual(g.data_dependency_closure('D'), set())
+
+
+# =========================================================================
+# 7. DataSemantics.enablement_blockers
+# =========================================================================
+
+class TestDataSemanticsEnablementBlockers(unittest.TestCase):
+
+    def test_excluded_event_reported(self):
+        g = DataDcrGraph()
+        g.events = {'A'}
+        g.marking.included = set()
+        g.labels = {'A'}
+        g.label_map = {'A': 'A'}
+        blockers = DataSemantics.enablement_blockers('A', g)
+        self.assertTrue(any('excluded' in b for b in blockers))
+
+    def test_matches_enabled_for_guarded_condition_blocking(self):
+        """Mirrors test_guarded_condition_blocks_when_true: enabled() says
+        blocked, enablement_blockers() must explain why."""
+        g = DataDcrGraph()
+        g.events = {'A', 'B', 'C'}
+        g.marking.included = {'A', 'B', 'C'}
+        g.labels = {'A', 'B', 'C'}
+        g.label_map = {e: e for e in g.events}
+        g.event_types = {'A': DataType.INT, 'B': DataType.VOID, 'C': DataType.VOID}
+        g.decisions = {'A': INPUT_MARKER}
+        g.guarded_conditions = {'C': {'B': Guard(eq(event_ref('A'), const(1)))}}
+
+        DataSemantics.execute(g, 'A', input_value=1)
+        enabled = DataSemantics.enabled(g)
+        blockers = DataSemantics.enablement_blockers('C', g)
+        self.assertNotIn('C', enabled)
+        self.assertTrue(any('guarded condition' in b and 'B' in b for b in blockers))
+
+        DataSemantics.execute(g, 'B')
+        enabled = DataSemantics.enabled(g)
+        blockers = DataSemantics.enablement_blockers('C', g)
+        self.assertIn('C', enabled)
+        self.assertEqual(blockers, [])
+
+    def test_matches_enabled_for_guarded_milestone_blocking(self):
+        """Mirrors test_guarded_milestone_blocks."""
+        g = DataDcrGraph()
+        g.events = {'A', 'B', 'C'}
+        g.marking.included = {'A', 'B', 'C'}
+        g.marking.pending = {'B'}
+        g.labels = {'A', 'B', 'C'}
+        g.label_map = {e: e for e in g.events}
+        g.event_types = {'A': DataType.INT, 'B': DataType.VOID, 'C': DataType.VOID}
+        g.decisions = {'A': INPUT_MARKER}
+        g.guarded_milestones = {'C': {'B': Guard(eq(event_ref('A'), const(1)))}}
+
+        DataSemantics.execute(g, 'A', input_value=1)
+        enabled = DataSemantics.enabled(g)
+        blockers = DataSemantics.enablement_blockers('C', g)
+        self.assertNotIn('C', enabled)
+        self.assertTrue(any('guarded milestone' in b and 'B' in b for b in blockers))
+
+    def test_unguarded_condition_blocker(self):
+        g = DataDcrGraph()
+        g.events = {'A', 'B'}
+        g.marking.included = {'A', 'B'}
+        g.labels = {'A', 'B'}
+        g.label_map = {e: e for e in g.events}
+        g.conditions = {'B': {'A'}}
+        blockers = DataSemantics.enablement_blockers('B', g)
+        self.assertTrue(any('unmet condition' in b and 'A' in b for b in blockers))
+
+    def test_non_data_graph_falls_back_to_base(self):
+        """Passing a plain DcrGraph must route to DcrSemantics.enablement_blockers,
+        exactly mirroring enabled()'s own fallback."""
+        from pm4py.objects.dcr.obj import DcrGraph
+        g = DcrGraph()
+        g.events = {'A', 'B'}
+        g.marking.included = {'A', 'B'}
+        g.labels = {'A', 'B'}
+        g.label_map = {e: e for e in g.events}
+        g.conditions = {'B': {'A'}}
+        blockers = DataSemantics.enablement_blockers('B', g)
+        self.assertTrue(any('unmet condition' in b and 'A' in b for b in blockers))
+
+
+# =========================================================================
+# 8. DataSemantics.resolve_closure
+# =========================================================================
+
+class TestResolveClosure(unittest.TestCase):
+
+    def _make_graph(self):
+        g = DataDcrGraph()
+        g.events = {'A', 'B', 'C'}
+        g.marking.included = set(g.events)
+        g.labels = set(g.events)
+        g.label_map = {e: e for e in g.events}
+        g.event_types = {'A': DataType.INT, 'B': DataType.INT, 'C': DataType.INT}
+        # C depends on B (computed), B is an input event
+        g.decisions = {
+            'A': INPUT_MARKER,
+            'B': INPUT_MARKER,
+            'C': eq(event_ref('B'), const(1)),
+        }
+        return g
+
+    def test_resolves_input_and_decision_events_in_dependency_order(self):
+        """B (input) must resolve before C (computed, depends on B) --
+        exercised out of natural order to prove the fixpoint loop handles it."""
+        g = self._make_graph()
+        values = {'B': 1}
+
+        def resolve_input(event_id):
+            return values.get(event_id)
+
+        DataSemantics.resolve_closure(g, {'B', 'C'}, resolve_input)
+        self.assertIn('B', g.marking.executed)
+        self.assertIn('C', g.marking.executed)
+        self.assertEqual(g.marking.event_values['C'], True)
+
+    def test_unresolvable_event_stays_pending_no_crash(self):
+        g = self._make_graph()
+
+        def resolve_input(event_id):
+            return None  # nothing ever resolves
+
+        # Should not raise, and nothing should execute.
+        DataSemantics.resolve_closure(g, {'B', 'C'}, resolve_input)
+        self.assertNotIn('B', g.marking.executed)
+        self.assertNotIn('C', g.marking.executed)
+
+    def test_partial_resolution_leaves_dependents_pending(self):
+        g = self._make_graph()
+
+        def resolve_input(event_id):
+            return None  # B never resolves, so C (depends on B) can't either
+
+        DataSemantics.resolve_closure(g, {'B', 'C'}, resolve_input)
+        self.assertNotIn('B', g.marking.executed)
+        self.assertNotIn('C', g.marking.executed)
+
+    def test_empty_closure_is_a_noop(self):
+        g = self._make_graph()
+        DataSemantics.resolve_closure(g, set(), lambda event_id: 1)
+        self.assertEqual(g.marking.executed, set())

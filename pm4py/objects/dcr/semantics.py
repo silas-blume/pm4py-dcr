@@ -1,4 +1,4 @@
-from typing import Set
+from typing import List, Set
 
 from pm4py.objects.dcr.obj import DcrGraph
 
@@ -55,6 +55,38 @@ class DcrSemantics(object):
                     graph.marking.executed))) > 0:
                 res.discard(e)
         return res
+
+    @classmethod
+    def enablement_blockers(cls, event: str, graph: DcrGraph) -> List[str]:
+        """
+        Explain why ``event`` is not enabled, mirroring the exact blocking
+        conditions used by :meth:`enabled`. An empty list means nothing in
+        this (base, unguarded-conditions-only) scope blocks the event --
+        subclasses that add more relation types (milestones, guards) extend
+        this with their own checks.
+
+        Parameters
+        ----------
+        :param event: the event being explained
+        :param graph: DCR graph to check against
+
+        Returns
+        -------
+        :return: list of human-readable blocker descriptions (empty if none)
+        """
+        blockers: List[str] = []
+        included = graph.marking.included
+
+        if event not in included:
+            blockers.append("event is excluded (not included in current marking)")
+
+        unmet = sorted(
+            graph.conditions.get(event, set()) & included - graph.marking.executed
+        )
+        if unmet:
+            blockers.append(f"unmet condition(s): {', '.join(unmet)}")
+
+        return blockers
 
     @classmethod
     def execute(cls, graph: DcrGraph, event):

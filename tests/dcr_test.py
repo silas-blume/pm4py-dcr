@@ -1139,5 +1139,42 @@ class TestImportExportDCR(unittest.TestCase):
             self.second_test_file = ''
 
 
+class TestDcrSemanticsEnablementBlockers(unittest.TestCase):
+
+    def _make_graph(self):
+        g = DcrGraph()
+        g.events = {'A', 'B'}
+        g.marking.included = {'A', 'B'}
+        g.labels = {'A', 'B'}
+        g.label_map = {'A': 'A', 'B': 'B'}
+        return g
+
+    def test_excluded_event_reported(self):
+        from pm4py.objects.dcr.semantics import DcrSemantics
+        g = self._make_graph()
+        g.marking.included = set()
+        blockers = DcrSemantics.enablement_blockers('A', g)
+        self.assertTrue(any('excluded' in b for b in blockers))
+
+    def test_unmet_condition_reported_and_matches_enabled(self):
+        from pm4py.objects.dcr.semantics import DcrSemantics
+        g = self._make_graph()
+        g.conditions = {'B': {'A'}}
+
+        self.assertFalse(DcrSemantics.is_enabled('B', g))
+        blockers = DcrSemantics.enablement_blockers('B', g)
+        self.assertTrue(any('unmet condition' in b and 'A' in b for b in blockers))
+
+        DcrSemantics.execute(g, 'A')
+        self.assertTrue(DcrSemantics.is_enabled('B', g))
+        self.assertEqual(DcrSemantics.enablement_blockers('B', g), [])
+
+    def test_no_blockers_when_enabled(self):
+        from pm4py.objects.dcr.semantics import DcrSemantics
+        g = self._make_graph()
+        blockers = DcrSemantics.enablement_blockers('A', g)
+        self.assertEqual(blockers, [])
+
+
 if __name__ == '__main__':
     unittest.main()

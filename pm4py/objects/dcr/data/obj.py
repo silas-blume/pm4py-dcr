@@ -222,6 +222,31 @@ class DataDcrGraph(TimedDcrGraph):
         d = self.__decisions.get(event)
         return d is not None and d != INPUT_MARKER and isinstance(d, Expression)
 
+    def data_dependency_closure(self, event_id: str) -> Set[str]:
+        """Return the set of input/decision events reachable "upstream" of
+        ``event_id`` through conditions/guarded-conditions/milestones/
+        guarded-milestones edges targeting it, directly or transitively
+        through other data events. Void (non-data) sources are not recursed
+        into -- those must still be genuinely executed, never auto-resolved.
+        """
+        closure: Set[str] = set()
+        frontier = [event_id]
+        relation_maps = (
+            self.conditions, self.guarded_conditions,
+            self.milestones, self.guarded_milestones,
+        )
+        while frontier:
+            target = frontier.pop()
+            for relation in relation_maps:
+                sources = relation.get(target, {})
+                for source in sources:
+                    if source in closure:
+                        continue
+                    if self.is_input_event(source) or self.is_decision_event(source):
+                        closure.add(source)
+                        frontier.append(source)
+        return closure
+
     # ---- Predicate registry ----
 
     @property
