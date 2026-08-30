@@ -1,56 +1,89 @@
-# Dcr4py: An extension of pm4py for declarative Dynamic Condition Response Graphs
+# DCR4Py
 
-## Features
+DCR4Py is a DCR Graph extension of [PM4Py](https://processintelligence.solutions/), the Python process-mining library. It supports declarative process discovery, conformance checking, visualization, XML interchange, and data-aware Dynamic Condition Response (DCR) graphs.
 
-New features added compared to pm4py:
-* DcrGraph objects: Role, MilestoneNoResponse, NestingSubprocess, Timed, Import (from DCR Portal[1] and DCR js[2]), Export (to DCR Portal[2] and DCR js[2])
-* Conformance: Alignments, Rule based
-* Discovery with extensions: Role, Pending, Timed
-* Visualization: DcrGraph visualization with graphviz
+## Capabilities
 
-## Runnning the demo: For ICPM 2024 demonstration purposes follow this guide
+- Discover DCR graphs from event logs, including distributed, pending, and timed extensions.
+- Check conformance with rule-based replay or optimal alignments.
+- Import and export DCR Portal, DCR JS, and data-aware `XML_DCR_DATA` models.
+- Visualize DCR graphs with Graphviz and convert DCR graphs to Petri nets.
+- Model data-aware DCR graphs with typed input events, computed decision events, expression guards, and guarded conditions, responses, includes, excludes, milestones, and no-responses.
+- Inject deterministic domain predicates into data-aware guards at runtime.
 
-I recommend you use github codespaces: https://github.com/codespaces
+## Installation
 
-Follow the steps below:
+Use a virtual environment, then install this checkout and its pinned dependencies:
 
-0. Create a github account if you don't already have one.
-1. Got to https://github.com/codespaces
-2. Find the "Jupyter Notebook" start template and click "Use this template"
-3. Download the github code as a zip file: https://github.com/paul-cvp/pm4py-dcr/tree/feature/dcr_in_pm4py_revised (click on the green button and then click "download zip")
-4. Unzip in your local machine
-5. Drag all the unzipped files and folders into the left "EXPLORER" box of the Codespace, once you do that it will start uploading quite slowly, so wait for the upload to complete (you can also right click an empty space in the EXPLORER box and select "Upload")
-6. Once at least the new "requirements.txt" file is uploaded, in the bottom box with the "TERMINAL" header type "pip install -r requirements.txt", this will also take some time.
-7. Open the "dcr_tutorial.ipynb" in the notebooks folder and run the notebook cell by cell using Shift + Ctrl. If a pop up appears telling you to "Select kernel", then go to "Python Environments" and select "Python 3.1X.XX" as your python environment. 
-
-Now you should be good to go. Any interactions with the files and folders you need to move between your machine and codespaces should be handled with right click "Upload/Download" from the "EXPLORER" box.
-
-## Documentation: For ICPM 2024 demonstration purposes
-
-Generated documentation available at: https://paul-cvp.github.io/dcr4pydocs/
-
-Optionally you can generate the documentation (step 5 does not work in codespaces unless you install the HTML Preview extension inside the codespace):
-
-1. In your virtual python environment run: 
+```bash
+python -m pip install -r requirements.txt
+python -m pip install -e .
 ```
-pip install -U sphinx
-pip install sphinx-autodoc-annotation
-pip install pydata-sphinx-theme
+
+The project uses the `pm4py` Python package namespace. Graph rendering additionally requires a local [Graphviz](https://graphviz.org/download/) installation.
+
+## Quick Start
+
+Discover a DCR graph and check the same log for conformance:
+
+```python
+import pm4py
+
+log = pm4py.read_xes("path/to/event-log.xes")
+graph, _ = pm4py.discover_dcr(log)
+
+diagnostics = pm4py.conformance_dcr(
+    log, graph, return_diagnostics_dataframe=True
+)
+print(diagnostics)
 ```
-2. Move to the docs folder: ```cd docs```
-3. Generate all the .rst file using: ```python -m setup```
-4. Run ```make html```
-5. Inside "docs/build/html" you can open the ```index.html``` file in your browser and navigate around the documentation
 
-## DCR4Py contributors
+Build and execute a small data-aware DCR model. Input events receive a value at execution time; decision events evaluate expressions using values already held in the marking.
 
-[paul-cvp](https://github.com/paul-cvp),[Timmovich](https://github.com/Timmovich), [Scones111](https://github.com/Scones111), [RagnarLaki](https://github.com/RagnarLaki), 
-[simonhermansen](https://github.com/simonhermansen), [Axel](https://github.com/Axel0087), [Tijs](https://github.com/tslaats), [Hugo A. López](https://github.com/hugoalopez-dtu)
+```python
+from pm4py.objects.dcr.data.expressions import (
+    DataType, INPUT_MARKER, const, event_ref, if_then_else, lt,
+)
+from pm4py.objects.dcr.data.obj import DataDcrGraph
+from pm4py.objects.dcr.data.semantics import DataSemantics
 
+graph = DataDcrGraph()
+graph.events = {"Amount", "Decision"}
+graph.labels = set(graph.events)
+graph.label_map = {event: event for event in graph.events}
+graph.marking.included = set(graph.events)
+graph.event_types = {"Amount": DataType.INT, "Decision": DataType.INT}
+graph.decisions = {
+    "Amount": INPUT_MARKER,
+    "Decision": if_then_else(lt(event_ref("Amount"), const(200)), const(1), const(2)),
+}
 
-## Cite DCR4Py
-If you are using DCR4Py for academic work, please use the following reference:
-**Hermansen, S. V., Jónsson, R., Kjeldsen, J. L., Slaats, T., Cosma, V. P., & López, H. A.** (2024). DCR4Py: A PM4Py Library Extension for Declarative Process Mining in Python. In 6th International Conference on Process Mining. CEUR-WS. [Article link](https://ceur-ws.org/Vol-3783/paper_353.pdf)
+DataSemantics.execute(graph, "Amount", input_value=150)
+DataSemantics.execute(graph, "Decision")
+print(graph.marking.event_values)  # {"Amount": 150, "Decision": 1}
+```
+
+## Documentation and Examples
+
+- [API documentation](https://paul-cvp.github.io/dcr4pydocs/)
+- [DCR tutorial notebook](notebooks/dcr_tutorial.ipynb)
+- [Runnable DCR examples](examples/dcr_examples.py)
+- [Data-aware DCR architecture](docs/data_dcr_architecture.md)
+- [Data-aware XML format](docs/data_dcr_xml_format.md)
+- [Predicate injection for guards](docs/data_dcr_predicate_injection.md)
+- [Test suite](tests)
+
+For a local Sphinx build, install the documentation dependencies, run `python -m setup` from `docs`, then run `make html`.
+
+## License and Attribution
+
+DCR4Py is licensed under the [GNU General Public License v3.0](LICENSE) and builds on PM4Py, developed by Process Intelligence Solutions and originally at Fraunhofer FIT.
+
+## Citation
+
+If you use DCR4Py in academic work, please cite:
+
+> Hermansen, S. V., Jonsson, R., Kjeldsen, J. L., Slaats, T., Cosma, V. P., and Lopez, H. A. (2024). *DCR4Py: A PM4Py Library Extension for Declarative Process Mining in Python.* 6th International Conference on Process Mining. [Article](https://ceur-ws.org/Vol-3783/paper_353.pdf)
 
 ```bibtex
 @inproceedings{hermansen2024dcr4py,
@@ -59,69 +92,6 @@ If you are using DCR4Py for academic work, please use the following reference:
   booktitle={6th International Conference on Process Mining},
   year={2024},
   organization={CEUR-WS}
-}
-```
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-# pm4py (documentation from the source repo)
-pm4py is a python library that supports (state-of-the-art) process mining algorithms in python. 
-It is open source (licensed under GPL) and intended to be used in both academia and industry projects.
-pm4py is managed and developed by Process Intelligence Solutions (https://processintelligence.solutions/).
-pm4py was initially developed at the Fraunhofer Institute for Applied Information Technology FIT.
-
-## Documentation / API
-The full documentation of pm4py can be found at https://processintelligence.solutions/
-
-## First Example
-A very simple example, to whet your appetite:
-
-```python
-import pm4py
-
-if __name__ == "__main__":
-    log = pm4py.read_xes('<path-to-xes-log-file.xes>')
-    net, initial_marking, final_marking = pm4py.discover_petri_net_inductive(log)
-    pm4py.view_petri_net(net, initial_marking, final_marking, format="svg")
-```
-
-## Installation
-pm4py can be installed on Python 3.9.x / 3.10.x / 3.11.x / 3.12.x by invoking:
-*pip install -U pm4py*
-
-pm4py is also running on older Python environments with different requirements sets, including:
-- Python 3.8 (3.8.10): third_party/old_python_deps/requirements_py38.txt
-
-## Requirements
-pm4py depends on some other Python packages, with different levels of importance:
-* *Essential requirements*: numpy, pandas, deprecation, networkx
-* *Normal requirements* (installed by default with the pm4py package, important for mainstream usage): graphviz, intervaltree, lxml, matplotlib, pydotplus, pytz, scipy, tqdm
-* *Optional requirements* (not installed by default): requests, pyvis, jsonschema, workalendar, pyarrow, scikit-learn, polars, openai, pyemd, pyaudio, pydub, pygame, pywin32, pygetwindow, pynput
-
-## Release Notes
-To track the incremental updates, please refer to the *CHANGELOG* file.
-
-## Third Party Dependencies
-As scientific library in the Python ecosystem, we rely on external libraries to offer our features.
-In the */third_party* folder, we list all the licenses of our direct dependencies.
-Please check the */third_party/LICENSES_TRANSITIVE* file to get a full list of all transitive dependencies and the corresponding license.
-
-## Citing pm4py
-If you are using pm4py in your scientific work, please cite pm4py as follows:
-
-**Alessandro Berti, Sebastiaan van Zelst, Daniel Schuster**. (2023). *PM4Py: A process mining library for Python*. Software Impacts, 17, 100556. [DOI](https://doi.org/10.1016/j.simpa.2023.100556) | [Article Link](https://www.sciencedirect.com/science/article/pii/S2665963823000933)
-
-BiBTeX:
-
-```bibtex
-@article{pm4py,  
-title = {PM4Py: A process mining library for Python},  
-journal = {Software Impacts},  
-volume = {17},  
-pages = {100556},  
-year = {2023},  
-issn = {2665-9638},  
-doi = {https://doi.org/10.1016/j.simpa.2023.100556},  
-url = {https://www.sciencedirect.com/science/article/pii/S2665963823000933},  
-author = {Alessandro Berti and Sebastiaan van Zelst and Daniel Schuster},  
 }
 ```
 
