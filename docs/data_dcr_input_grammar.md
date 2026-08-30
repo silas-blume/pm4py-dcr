@@ -2,9 +2,10 @@
 
 This document specifies the accepted input grammar for *data-aware DCR* in this repository, based on `DataDcrGraph`, `DataSemantics`, and expression classes.
 
-Key fact:
-- There is currently no dedicated XML/JSON parser for data-aware DCR fields.
-- Data-aware models are provided as Python objects/templates.
+Data-aware models can be created programmatically, from templates, or through
+the `XML_DCR_DATA` importer. The XML format is documented in
+[Data-Aware DCR XML Format](data_dcr_xml_format.md). JSON is not a supported
+data-aware interchange format.
 
 This document is designed to be directly usable for LLM-based generation.
 
@@ -16,6 +17,14 @@ Accepted ways to create data DCR inputs:
 2. Construct `DataDcrGraph(template_dict)` where `template_dict` uses the DCR template keys.
 3. Use a DCR template dictionary and pass it through `cast_to_dcr_object(...)`.
    - If any data keys are non-empty, this returns `DataDcrGraph`.
+4. Import `XML_DCR_DATA` using `pm4py.objects.dcr.importer.importer.apply(...)`
+    with the `XML_DCR_DATA` variant, or
+    `pm4py.objects.dcr.importer.variants.xml_dcr_data.import_from_string(...)`.
+
+`XML_DCR_DATA` also exports through the matching exporter variant. It supports
+typed events, decision expressions, guarded relations, and marking event
+values; see [Data-Aware DCR XML Format](data_dcr_xml_format.md) for its
+complete schema and expression encoding rules.
 
 Data keys that trigger data-aware casting:
 - `eventTypes`

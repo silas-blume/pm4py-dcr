@@ -31,7 +31,7 @@ References
    Data.  BPM 2021 Workshops, LNBIP 436, pp. 362-374.
 """
 from copy import deepcopy
-from typing import Any, Callable, Dict, Optional, Set
+from typing import Any, Dict, Set
 
 from pm4py.objects.dcr.data.expressions import (
     DataType, Expression, Guard, INPUT_MARKER,
